@@ -19,6 +19,24 @@ From a financial point of view, the service corresponds to a sort of payment spl
 
 For obvious reasons, the "value" mentioned here has to be a stable asset.
 
+## Design
+The flow described in the introduction will require a combination of web2 and web3 elements. For the Web3 part, two smart-contracts will be required: 
+1. an ERC20 compliant contract for the stable asset, called *unit of accounting (UoA)*
+2. the escrow and payment splitter contract, which, parsing through the flow explained in the introduction, will need the functions 
+    - `openEscrowSlot(... some way to pass the payment splitting definition ...)` called by the consolidation service upon request for quotation
+    - `getPaymentSplittingDefition(slotId)` called by the customer to inspect the payment splitting
+    - `fillEscrowSlot(slotId)` called by the customer to transfer the amount of ERC20 to the smart-contract. The amount has to be `approve`d on the UoA contract before
+    - `getEscrowedValue()` called by the supplier to verify that the amount of ERC20 for its order(s) is escrowed
+    - `settle(escrowSlotId)` called by the customer once the goods have arrived
+    
+    The `openEscrowSlot()` function should only be callable by the consolidation service operator and the `settle()` method should only be accessible to the account which called `fillEscrowSlot()`. `getPaymentSplittingDefition()` and `getEscrowedValue()` are read-only.
+
 ## Workspace
 ### Preparation
 `npm install -g truffle ganache-cli`
+
+In the folder where this repository is cloned to:
+- `npm install`: installs @openzeppelin/contracts
+
+## TODO
+- if possible, add the signed message for the UoA.approve() to the fillEscrowSlot call so that it can be executed by the smart-contract instead of imposing it to the user
