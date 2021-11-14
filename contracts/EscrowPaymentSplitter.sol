@@ -2,6 +2,7 @@
 pragma solidity ^0.8.10;
 import '@openzeppelin/contracts/access/Ownable.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import '@openzeppelin/contracts/utils/Strings.sol';
 
 
 contract EscrowPaymentSplitter is Ownable {
@@ -14,35 +15,48 @@ contract EscrowPaymentSplitter is Ownable {
     struct EscrowSlot {
         uint id;
         bool filled;
+        address payer;          // Set in fillEscrowSlot(), the only address allowed to call settle()
         PaymentSplittingDefinition paymentSplittingDefinition;
     }
 
     EscrowSlot[] escrowSlots;
     uint lastEscrowSlotId;
+    address tokenContractAddress;
+    using Strings for uint256;
+
+    constructor(address tokenContract){
+        tokenContractAddress = tokenContract;
+    }
 
     function openEscrowSlot(PaymentSplittingDefinition memory paymentSplittingDefinition) public onlyOwner returns(uint) {
+        // determine slot ID, instantiate struct and set ID
         uint slotId = lastEscrowSlotId++;
         EscrowSlot memory slot;
         slot.id = slotId;
+        // add slot to storage and add payment splitting definition with its dynamic arrays (can only be done on storage)
         escrowSlots.push(slot);
         escrowSlots[escrowSlots.length - 1].paymentSplittingDefinition = paymentSplittingDefinition;
         return slotId;
     }
 
     function getPaymentSplittingDefition(uint slotId) public view returns(PaymentSplittingDefinition memory){
-        for(uint i = 0; i < escrowSlots.length; i++){
-            if(escrowSlots[i].id == slotId){
-                return escrowSlots[i].paymentSplittingDefinition;
-            }
-        }
-        PaymentSplittingDefinition memory paymentSplittingDefinition;
-        return paymentSplittingDefinition;
+        uint slotIndex = getEscrowSlotIndex(slotId);                   // reverts if slot doesn't exist
+        return escrowSlots[slotIndex].paymentSplittingDefinition;
     }
 
     function fillEscrowSlot(uint slotId) public {
-        // call the token contract's transferFrom(...)
-        // store msg_sender as the only address allowed to call settle
-        // mark slot as filled
+        uint slotIndex = getEscrowSlotIndex(slotId);                   // reverts if slot doesn't exist
+        // compute total slot value from payment splitting definition
+        uint val;
+        for(uint i = 0; i < escrowSlots[slotIndex].paymentSplittingDefinition.recipients.length; i++){
+            val += escrowSlots[slotIndex].paymentSplittingDefinition.amounts[i];
+        }
+        // transfer value into tbis contract to escrow it
+        IERC20 tokenContract = IERC20(tokenContractAddress);
+        tokenContract.transferFrom(msg.sender, address(this), val);     // reverts if value can't be collectedd
+        // update state
+        escrowSlots[slotIndex].payer = msg.sender;
+        escrowSlots[slotIndex].filled = true;
     }
 
     function getEscrowedValue() public view returns(uint) {
@@ -51,9 +65,29 @@ contract EscrowPaymentSplitter is Ownable {
         // return total
     }
 
-    function settle(uint escrowSlotId) public {
-        // check that slot was filled but not settled
-        // check that msg.sender is the address that filled the slot
-        // iterate through the payment splitting definition and call the token contract's transfer() for each element
+    function settleEscrowSlot(uint slotId) public {
+        uint slotIndex = getEscrowSlotIndex(slotId);            // reverts if slot doesn't exist
+        // validate conditions for settling: slot was filled + it's the address that filled it that is calling
+        require(escrowSlots[slotIndex].filled, string(abi.encodePacked("Slot with ID ", slotId.toString(), " was not filled and can't be settled")));
+        require(escrowSlots[slotIndex].payer == msg.sender, "Slot can only be settled by payer");
+        // execute payment splitting definition
+        IERC20 tokenContract = IERC20(tokenContractAddress);
+        for(uint i = 0; i < escrowSlots[slotIndex].paymentSplittingDefinition.recipients.length; i++){
+            tokenContract.transfer(escrowSlots[slotIndex].paymentSplittingDefinition.recipients[i], escrowSlots[slotIndex].paymentSplittingDefinition.amounts[i]);
+        }
+        // Remove escrow slot
+        for(uint i = slotIndex; i < escrowSlots.length; i++){
+            escrowSlots[i] = escrowSlots[i+1];
+        }
+        escrowSlots.pop();
+    }
+
+    function getEscrowSlotIndex(uint slotId) internal view returns(uint){
+        for(uint i = 0; i < escrowSlots.length; i++){
+            if(escrowSlots[i].id == slotId){
+                return i;
+            }
+        }
+        revert(string(abi.encodePacked("Slot with ID ", slotId.toString(), " doesn't exist")));
     }
 }
