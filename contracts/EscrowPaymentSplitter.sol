@@ -6,24 +6,35 @@ import '@openzeppelin/contracts/utils/Strings.sol';
 
 
 contract EscrowPaymentSplitter is Ownable {
-    
+    using Strings for uint256;
+
+    // ***** Data type definitions *****
+    // Storage structure to represent recipients and amounts in standard Solidity array instead of an array of custom type => see ./design_choices.md for the reasons
+    // each splitter is the same index in both arrays, i.e. splitter = <recipients[i], amounts[i]>
     struct PaymentSplittingDefinition {
         address[] recipients;
         uint[] amounts;
     }
     
+    // Main data storage structure
     struct EscrowSlot {
         uint id;
         bool filled;
-        address payer;          // Set in fillEscrowSlot(), the only address allowed to call settle()
+        address payer;          // Set in fillEscrowSlot(), the only address allowed to call settleEscrowSlot()
         PaymentSplittingDefinition paymentSplittingDefinition;
     }
 
+    // Events: slot opened, filled, settled
+    event escrowSlotOpened(uint slotId);
+    event escrowSlotFilled(uint slotId);
+    event escrowSlotSettled(uint slotId);
+
+    // ***** State in storage *****
     EscrowSlot[] escrowSlots;
     uint lastEscrowSlotId;
     address tokenContractAddress;
-    using Strings for uint256;
 
+    // ***** Methods *****
     constructor(address tokenContract){
         tokenContractAddress = tokenContract;
     }
@@ -36,6 +47,7 @@ contract EscrowPaymentSplitter is Ownable {
         // add slot to storage and add payment splitting definition with its dynamic arrays (can only be done on storage)
         escrowSlots.push(slot);
         escrowSlots[escrowSlots.length - 1].paymentSplittingDefinition = paymentSplittingDefinition;
+        emit escrowSlotOpened(slotId);
         return slotId;
     }
 
@@ -57,6 +69,7 @@ contract EscrowPaymentSplitter is Ownable {
         // update state
         escrowSlots[slotIndex].payer = msg.sender;
         escrowSlots[slotIndex].filled = true;
+        emit escrowSlotFilled(slotId);
     }
 
     function isEscrowSlotFilled(uint slotId) public view returns(bool) {
@@ -94,8 +107,11 @@ contract EscrowPaymentSplitter is Ownable {
             escrowSlots[i] = escrowSlots[i+1];
         }
         escrowSlots.pop();
+        emit escrowSlotSettled(slotId);
     }
 
+    // *** Internal helper
+    
     function getEscrowSlotIndex(uint slotId) internal view returns(uint){
         for(uint i = 0; i < escrowSlots.length; i++){
             if(escrowSlots[i].id == slotId){
