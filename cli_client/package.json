@@ -1,0 +1,11 @@
+{
+    "dependencies": {
+        "@truffle/contract": "^4.3.38",
+        "web3": "^1.6.0"
+    },
+    "devDependencies": {
+        "@types/node": "^16.11.6",
+        "ts-node": "^10.4.0",
+        "typescript": "^4.4.4"
+    }
+}
