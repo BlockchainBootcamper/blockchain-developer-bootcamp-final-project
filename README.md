@@ -29,7 +29,7 @@ The flow described in the introduction will require a combination of web2 and we
     - `getEscrowedValue()` called by the supplier to verify that the amount of ERC20 for its order(s) is escrowed
     - `settleEscrowSlot(escrowSlotId)` called by the customer once the goods have arrived
     
-    The `openEscrowSlot()` function should only be callable by the consolidation service operator and the `settleEscrowSlot()` method should only be accessible to the account which called `fillEscrowSlot()`. `getPaymentSplittingDefition()` and `getEscrowedValue()` are read-only.
+    The `openEscrowSlot()` function should only be callable by the consolidation service operator and the `settleEscrowSlot()` method should only be accessible to the address which called `fillEscrowSlot()`. `getPaymentSplittingDefition()`, `isEscrowSlotFilled()` and `getEscrowedValue()` are read-only.
 
 ## Workspace
 ### Preparation
