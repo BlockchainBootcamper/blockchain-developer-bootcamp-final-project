@@ -59,10 +59,24 @@ contract EscrowPaymentSplitter is Ownable {
         escrowSlots[slotIndex].filled = true;
     }
 
-    function getEscrowedValue() public view returns(uint) {
-        // iterate through open slots, if the slot has been filled but not settled, iterate through the payment splitter definition looking for the msg_sender
-        // sum up values
-        // return total
+    function isEscrowSlotFilled(uint slotId) public view returns(bool) {
+        uint slotIndex = getEscrowSlotIndex(slotId);
+        return escrowSlots[slotIndex].filled;
+    }
+
+    /**  Returns the value escrowed for the caller
+         If the slot is not filled or the caller is not in the payment splitting definition, returns 0
+     */
+    function getEscrowedValue(uint slotId) public view returns(uint) {
+        uint slotIndex = getEscrowSlotIndex(slotId);
+        if(escrowSlots[slotIndex].filled){
+            for(uint i = 0; i < escrowSlots[slotIndex].paymentSplittingDefinition.recipients.length; i++){
+                if(escrowSlots[slotIndex].paymentSplittingDefinition.recipients[i] == msg.sender){
+                    return escrowSlots[slotIndex].paymentSplittingDefinition.amounts[i];
+                }
+            }
+        }
+        return 0;
     }
 
     function settleEscrowSlot(uint slotId) public {
@@ -76,7 +90,7 @@ contract EscrowPaymentSplitter is Ownable {
             tokenContract.transfer(escrowSlots[slotIndex].paymentSplittingDefinition.recipients[i], escrowSlots[slotIndex].paymentSplittingDefinition.amounts[i]);
         }
         // Remove escrow slot
-        for(uint i = slotIndex; i < escrowSlots.length; i++){
+        for(uint i = slotIndex; i < (escrowSlots.length - 1); i++){
             escrowSlots[i] = escrowSlots[i+1];
         }
         escrowSlots.pop();
