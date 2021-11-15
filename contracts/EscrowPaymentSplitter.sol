@@ -9,8 +9,10 @@ contract EscrowPaymentSplitter is Ownable {
     using Strings for uint256;
 
     // ***** Data type definitions *****
-    // Storage structure to represent recipients and amounts in standard Solidity array instead of an array of custom type => see ./design_choices.md for the reasons
-    // each splitter is the same index in both arrays, i.e. splitter = <recipients[i], amounts[i]>
+    /** Storage structure to represent recipients and amounts in an array of native Solidity types instead of an array of custom type => see ../design_choices.md 
+     *  for the reasons
+     *  each payment splitter is the one index in both arrays, i.e. splitter = <recipients[i], amounts[i]>
+     */
     struct PaymentSplittingDefinition {
         address[] recipients;
         uint[] amounts;
@@ -35,10 +37,22 @@ contract EscrowPaymentSplitter is Ownable {
     address tokenContractAddress;
 
     // ***** Methods *****
-    constructor(address tokenContract){
+
+    /**
+    * @dev contract constructor. Set the owner and the token contract
+    *
+    * @param tokenContract address of the token contract
+    */
+    constructor(address tokenContract) public Ownable(){
         tokenContractAddress = tokenContract;
     }
 
+    /**
+    * @dev opens an escrow slot. Only accessible to the contract owner (i.e. the supplier consolidator service)
+    *
+    * @param paymentSplittingDefinition struct to describe payment splitting
+    * @return ID of the escrow slot
+    */
     function openEscrowSlot(PaymentSplittingDefinition memory paymentSplittingDefinition) public onlyOwner returns(uint) {
         // determine slot ID, instantiate struct and set ID
         uint slotId = lastEscrowSlotId++;
@@ -51,11 +65,22 @@ contract EscrowPaymentSplitter is Ownable {
         return slotId;
     }
 
+    /**
+    * @dev getter for a slot's payment splitting definition
+    *
+    * @param slotId ID of the escrow slot
+    * @return payment splitting definition - a struct with attributes recipients (type address[]) and amounts (uint[])
+    */
     function getPaymentSplittingDefition(uint slotId) public view returns(PaymentSplittingDefinition memory){
         uint slotIndex = getEscrowSlotIndex(slotId);                   // reverts if slot doesn't exist
         return escrowSlots[slotIndex].paymentSplittingDefinition;
     }
 
+    /**
+    * @dev fills the escrow slot (i.e. transfers the value from the caller to the contract)
+    *
+    * @param slotId ID of the escrow slot
+    */
     function fillEscrowSlot(uint slotId) public {
         uint slotIndex = getEscrowSlotIndex(slotId);                   // reverts if slot doesn't exist
         // compute total slot value from payment splitting definition
@@ -72,14 +97,24 @@ contract EscrowPaymentSplitter is Ownable {
         emit escrowSlotFilled(slotId);
     }
 
+    /**
+    * @dev getter for a slot's filled status (i.e. whether it has been filled with value aka paid)
+    *
+    * @param slotId ID of the escrow slot
+    * @return fill status of the slot - if true, value was transfered
+    */
     function isEscrowSlotFilled(uint slotId) public view returns(bool) {
         uint slotIndex = getEscrowSlotIndex(slotId);
         return escrowSlots[slotIndex].filled;
     }
 
-    /**  Returns the value escrowed for the caller
-         If the slot is not filled or the caller is not in the payment splitting definition, returns 0
-     */
+    /**
+    * @dev getter for a slot's escrowed amount for to the caller
+    *
+    * @param slotId ID of the escrow slot
+    * @return a uint for the amount escrowed by the contract for the caller, 0 if the slot has not been filled or if the caller is not in the payment splitting 
+    *         definition
+    */
     function getEscrowedValue(uint slotId) public view returns(uint) {
         uint slotIndex = getEscrowSlotIndex(slotId);
         if(escrowSlots[slotIndex].filled){
@@ -92,6 +127,11 @@ contract EscrowPaymentSplitter is Ownable {
         return 0;
     }
 
+    /**
+    * @dev executes the payment splitting definition (i.e. transfers the escrowed amount to the recipients). Can only be called by the address that filled the slot
+    *
+    * @param slotId ID of the escrow slot
+    */
     function settleEscrowSlot(uint slotId) public {
         uint slotIndex = getEscrowSlotIndex(slotId);            // reverts if slot doesn't exist
         // validate conditions for settling: slot was filled + it's the address that filled it that is calling
@@ -111,7 +151,12 @@ contract EscrowPaymentSplitter is Ownable {
     }
 
     // *** Internal helper
-    
+    /**
+    * @dev internal function to find the index inside the state's dynamic array of an EscrowSlot with given ID. Reverts if escrow slot ID doesn't exist
+    *
+    * @param slotId ID of the escrow slot
+    * @return uint the index of the slot inside the state's escrowSlots dynamic array
+    */
     function getEscrowSlotIndex(uint slotId) internal view returns(uint){
         for(uint i = 0; i < escrowSlots.length; i++){
             if(escrowSlots[i].id == slotId){
