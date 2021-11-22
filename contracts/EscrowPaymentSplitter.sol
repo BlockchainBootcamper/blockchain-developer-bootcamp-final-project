@@ -27,9 +27,9 @@ contract EscrowPaymentSplitter is Ownable {
     }
 
     // Events: slot opened, filled, settled
-    event escrowSlotOpened(uint slotId);
-    event escrowSlotFilled(uint slotId);
-    event escrowSlotSettled(uint slotId);
+    event EscrowSlotOpened(uint externalId, uint slotId);
+    event EscrowSlotFilled(uint slotId);
+    event EscrowSlotSettled(uint slotId);
 
     // ***** State in storage *****
     EscrowSlot[] escrowSlots;
@@ -43,17 +43,18 @@ contract EscrowPaymentSplitter is Ownable {
     *
     * @param tokenContract address of the token contract
     */
-    constructor(address tokenContract) public Ownable(){
+    constructor(address tokenContract) Ownable(){
         tokenContractAddress = tokenContract;
     }
 
     /**
     * @dev opens an escrow slot. Only accessible to the contract owner (i.e. the supplier consolidator service)
     *
+    * @param externalId ID of external source passed through to the EscrowSlotOpened
     * @param paymentSplittingDefinition struct to describe payment splitting
     * @return ID of the escrow slot
     */
-    function openEscrowSlot(PaymentSplittingDefinition memory paymentSplittingDefinition) public onlyOwner returns(uint) {
+    function openEscrowSlot(uint externalId, PaymentSplittingDefinition memory paymentSplittingDefinition) public onlyOwner returns(uint) {
         // determine slot ID, instantiate struct and set ID
         uint slotId = lastEscrowSlotId++;
         EscrowSlot memory slot;
@@ -61,7 +62,7 @@ contract EscrowPaymentSplitter is Ownable {
         // add slot to storage and add payment splitting definition with its dynamic arrays (can only be done on storage)
         escrowSlots.push(slot);
         escrowSlots[escrowSlots.length - 1].paymentSplittingDefinition = paymentSplittingDefinition;
-        emit escrowSlotOpened(slotId);
+        emit EscrowSlotOpened(externalId, slotId);
         return slotId;
     }
 
@@ -94,7 +95,7 @@ contract EscrowPaymentSplitter is Ownable {
         // update state
         escrowSlots[slotIndex].payer = msg.sender;
         escrowSlots[slotIndex].filled = true;
-        emit escrowSlotFilled(slotId);
+        emit EscrowSlotFilled(slotId);
     }
 
     /**
@@ -147,7 +148,7 @@ contract EscrowPaymentSplitter is Ownable {
             escrowSlots[i] = escrowSlots[i+1];
         }
         escrowSlots.pop();
-        emit escrowSlotSettled(slotId);
+        emit EscrowSlotSettled(slotId);
     }
 
     // *** Internal helper
