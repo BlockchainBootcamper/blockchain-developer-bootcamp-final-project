@@ -1,0 +1,51 @@
+{% extends 'layout.twig' %}
+
+{% block body %}
+  <h1>{{title}}</h1>
+  
+  <div id="initializationMessage">Loading...</div>
+  
+  <div id="walletInitialization" style="display: none">
+    <div>Please connect your wallet</div>
+    <div><button id="walletConnectionButton" onclick="connectWallet()">Connect wallet</button></div>
+  </div>
+
+  <div id="accountDetails" style="display: none"><b>Account</b>: <span id="supplierName"><i>No account</i></span> (address: <span id="supplierAddress"></span>)</div>
+  
+  <div id="page" style="display: none">
+    <h2>Token</h2>
+    <div style="display: inline-block; height: 100%; text-align: center;">
+      Current balance: <span id="balance">?</span>
+    </div>
+
+    <h2>Parts</h2>
+    <div id="parts"></div>
+
+    <h2>Orders</h2>
+    <div id="orders"></div>
+    <div id="noOrderText"><i>No orders yet</i></div>
+  </div>
+
+  <div id="registration" style="display: none; margin-top: 30px">
+    <div>Please register your address <span id="supplierAddressInRegistration"></span> as one of the suppliers</div>
+    <div><span id="supplierNames"></span> &nbsp; <button onclick="registerSupplier()">Register</button></div>
+  </div>
+
+  <div id="activityStreamContainer" style="display: none">
+    <h2>Activity stream</h2>
+    <div id="activityStream" style="height: 200px; overflow: auto; border: inset 1px black;"></div>
+  </div>
+
+  <div id="modalLayer" class="modal" onclick="closePopup(event)">
+    <div class="modal-content">
+      <span class="close" onclick="closePopup()">&times;</span>
+      <div id="popupContent"></div>
+    </div>
+  </div>
+
+  <script type="text/javascript">const currencyDecimals = {{currencyDecimals}}; const suppliers = {{suppliers}};</script>
+  <script type="text/javascript" src="javascripts/shared.js"></script>
+  <script type="text/javascript" src="javascripts/supplier.js"></script>
+  <script type="text/javascript" src="javascripts/renderingHelpers.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+{% endblock %}
