@@ -104,6 +104,7 @@ contract EscrowPaymentSplitter is Ownable {
     */
     function handleEscrowSlotFunding(uint slotId, address payer) internal {
         uint slotIndex = getEscrowSlotIndex(slotId);                   // reverts if slot doesn't exist
+        require(!escrowSlots[slotIndex].funded, string(abi.encodePacked("Slot with ID ", slotId.toString(), " was already funded")));
         // compute total slot value from payment splitting definition
         uint val;
         for(uint i = 0; i < escrowSlots[slotIndex].paymentSplittingDefinition.recipients.length; i++){
