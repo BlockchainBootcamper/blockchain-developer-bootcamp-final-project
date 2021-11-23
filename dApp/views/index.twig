@@ -1,0 +1,21 @@
+{% extends 'layout.twig' %}
+
+{% block body %}
+  <h1>Supply consolidation service demonstration</h1>
+  <div>Welcome!</div>
+  <div>There are 2 "sides" in such a service: customers and suppliers. Each has its own dApp:</div>
+  <div> - <a href="customer" target="_blank">Customer dApp</a></div>
+  <div> - <a href="supplier" target="_blank">Supplier dApp</a></div>
+  <div>
+    <b>Demo notes - Important</b>
+    <div>If you want to try out the demonstration end-to-end - i.e. order as customer, see money arrive at a supplier at the end - it's necessary to:
+      <ul>
+        <li>Setup two accounts on your wallet (label them to avoid confusion)</li>
+        <li><b>Before</b> any orders, use one of the accounts to register in the <a href="supplier" target="_blank">Supplier dApp</a>. This registration, which lets you take the identity of one of the predefined suppliers, replaces 
+        the associated address with the one your wallet provides to the dApp, which will then apply to all orders placed afterwards involving that supplier (previous orders keep the old supplier address)</li>
+        <li>Disconnect the wallet's supplier account and use the other one in the <a href="customer" target="_blank">Customer dApp</a></li>
+        <li>Once you've placed and settled orders, switch back to the wallet's supplier account to see the balance on the <a href="supplier" target="_blank">Supplier dApp</a>
+      </ul>
+    </div>
+  </div>
+{% endblock %}
