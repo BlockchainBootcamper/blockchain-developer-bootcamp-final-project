@@ -45,7 +45,7 @@ const initializeSmartContract = function(id){
                 notify('Escrow payment splitter contract: escrow slot opened event - order ID '+event.returnValues.externalId+' has slot ID '+event.returnValues.slotId);
                 orders[event.returnValues.externalId].escrowSlotId = event.returnValues.slotId;
                 orderEscrowSlotIndex[event.returnValues.slotId] = event.returnValues.externalId;
-                handleOrderStateTransition(event.returnValues.externalId, 'unconfirmed');
+                handleOrderStateTransition(event.returnValues.externalId, 'awaiting funding');
             }
         });
         contracts[id].events.EscrowSlotFilled().on('data', event => {
@@ -113,6 +113,7 @@ const loadOrders = function(){
     callAPI('customer/orders?address='+customer.address).then(response => {
         if(response.success){
             notify('OK - '+response.orders.length+' order(s) received', msgID);
+            console.log(response.orders);
             for(let order of response.orders){
                 orders[order.id] = order;
                 if(order.state != 'concluded' && order.escrowSlotId != null){
@@ -164,7 +165,8 @@ const order = function(itemID){
             orders[response.order.id] = response.order;
             orders[response.order.id].itemID = itemID;
             orders[response.order.id].amount = orderSize;
-            orders[response.order.id].state = 'opening escrow slot';
+            //orders[response.order.id].state = 'opening escrow slot';
+            orders[response.order.id].state = 'unconfirmed';
             addOrderToUI(response.order.id);
         }
         else notify('Backend failure', msgID, true);
@@ -172,14 +174,29 @@ const order = function(itemID){
 }
 
 const confirmOrder = function(orderID){
-    let msgID = notify('Blockchain: confirming order ID '+orderID+', allowing escrow smart contract to collect the involved amount ...');
-    let revert = handleOrderStateTransition(orderID, 'confirming', 'confirmOrder'+orderID);
+    //let msgID = notify('Blockchain: confirming order ID '+orderID+', allowing escrow smart contract to collect the involved amount ...');
+    //let revert = handleOrderStateTransition(orderID, 'confirming', 'confirmOrder'+orderID);
+    //contracts['uoa'].methods.approve(contracts['escrowPaymentSplitter']._address, orders[orderID].escrowAmount).send({from: customer.address}).then(response => {
+        //notify('OK', msgID);
+        let msgID = notify('API: confirming order '+orderID+' ...');
+        callAPI('order/confirm', {method: 'POST', body: {orderID}}).then(notify('OK - will open escrow slot', msgID)).catch(error => notify('Failure - '+error.message, msgID, true));
+        handleOrderStateTransition(orderID, 'opening escrow slot');
+        //if(enoughFunds(orderID)){fillEscrowSlot(orderID);}
+    //}).catch(error => {
+        //notify('Failure - '+error.message, msgID, true);
+        //revert();
+    //});
+}
+
+const fund = function(orderID){
+    let msgID = notify('Blockchain: allowing escrow smart contract to collect the involved amount for '+orderID+' ...');
+    let revert = handleOrderStateTransition(orderID, 'funded', 'fundEscrowSlotOrder'+orderID);
     contracts['uoa'].methods.approve(contracts['escrowPaymentSplitter']._address, orders[orderID].escrowAmount).send({from: customer.address}).then(response => {
         notify('OK', msgID);
-        let confirmedMsgID = notify('API: confirming order '+orderID+' funding ...');
-        callAPI('orderConfirmed', {method: 'POST', body: {orderID}}).then(notify('OK', confirmedMsgID)).catch(error => notify('Failure - '+error.message, msgID, true));
-        handleOrderStateTransition(orderID, 'confirmed');
-        if(enoughFunds(orderID)){fillEscrowSlot(orderID);}
+        //let msgID = notify('API: confirming order '+orderID+' ...');
+        //callAPI('order/confirm', {method: 'POST', body: {orderID}}).then(notify('OK - will open escrow slot', msgID)).catch(error => notify('Failure - '+error.message, msgID, true));
+        //handleOrderStateTransition(orderID, 'opening escrow slot');
+        //if(enoughFunds(orderID)){fillEscrowSlot(orderID);}
     }).catch(error => {
         notify('Failure - '+error.message, msgID, true);
         revert();
@@ -283,16 +300,19 @@ const renderOrders = function(){
 const renderOrder = function(orderID, refreshOwnRow = false){
     let order = orders[orderID];
     let state = [], buttons = [];
-    if(order.state != 'opening escrow slot' && order.state != 'concluded'){
+    //if(order.state != 'opening escrow slot' && order.state != 'concluded'){
+    if(order.state != 'unconfirmed' && order.state != 'opening escrow slot' && order.state != 'concluded'){
         buttons.push(createButton('See payment splitting', {onclick: 'showPaymentSplittingDefinition('+order.id+')', style:'margin-right: 30px'}));
     }
     if(order.state == 'unconfirmed' || order.state == 'confirming'){
-        buttons.push(createButton(enoughFunds(orderID) ? 'Confirm & fund order' : 'Confirm order', {id: 'confirmOrder'+orderID, onclick: 'confirmOrder('+orderID+')'}, order.state == 'confirming'));
+        //buttons.push(createButton(enoughFunds(orderID) ? 'Confirm & fund order' : 'Confirm order', {id: 'confirmOrder'+orderID, onclick: 'confirmOrder('+orderID+')'}, order.state == 'confirming'));
+        buttons.push(createButton('Confirm order', {id: 'confirmOrder'+orderID, onclick: 'confirmOrder('+orderID+')'}, order.state == 'confirming'));
     }
-    if(order.state == 'confirmed' || order.state == 'escrowing funds'){
-        let notEnoughFunds = !enoughFunds(orderID);
-        buttons.push(createButton('Escrow funds', {id: 'escrowOrderFunds'+orderID, onclick: 'fillEscrowSlot('+orderID+')'}, order.state == 'escrowing funds' || notEnoughFunds));
-        if(notEnoughFunds){buttons.push(' (not enough funds)')}
+    if(order.state == 'awaiting funding' || order.state == 'escrowing funds'){
+        //let notEnoughFunds = !enoughFunds(orderID);
+        //buttons.push(createButton('Escrow funds', {id: 'escrowOrderFunds'+orderID, onclick: 'fillEscrowSlot('+orderID+')'}, order.state == 'escrowing funds' || notEnoughFunds));
+        //if(notEnoughFunds){buttons.push(' (not enough funds)')}
+        buttons.push(createButton('Fund escrow slot', {id: 'fundEscrowSlotOrder'+orderID, onclick: 'fund('+orderID+')'}, order.state == 'escrowing funds'));
     }
     if(order.state == 'awaiting goods'|| order.state == 'settling escrow'){
         buttons.push(createButton('Confirm goods reception', {id: 'settleEscrow'+orderID, onclick: 'settleEscrowSlot('+orderID+')'}, order.state == 'settling escrow'));

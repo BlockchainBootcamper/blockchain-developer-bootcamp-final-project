@@ -4,6 +4,15 @@ var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 
+const {VariableSharepoint} = require('./utilities');
+const configuration = require('./configuration');
+const InMemoryDatabase = require('./database');
+const BlockchainClient = require('./blockchain-client');
+var db = new InMemoryDatabase();
+db.initialize();
+VariableSharepoint.share('database', db);
+VariableSharepoint.share('blockchainClient', new BlockchainClient(configuration));
+
 var pagesRouter = require('./routes/pages');
 var apiRouter = require('./routes/api');
 

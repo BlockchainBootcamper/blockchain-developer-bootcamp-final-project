@@ -21,7 +21,6 @@ class TableRow {
     }
 
     addCells(childrenArray, attributeSetter){
-        console.log('addCells', childrenArray);
         for(let i = 0; i < childrenArray.length; i++) {
             this.addCell(childrenArray[i], attributeSetter);
         }
