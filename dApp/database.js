@@ -45,37 +45,35 @@ class InMemoryDatabase {
     isCustomerAddress(address){return typeof(this.customerOrderIndex[address.toLowerCase()]) != 'undefined';}
 
     getCustomer(address){
-        return typeof(this.customers[address]) == 'object' ? this.customers[address] : null;
+        let addr = address.toLowerCase();
+        return typeof(this.customers[addr]) == 'object' ? this.customers[addr] : null;
     }
 
-    getCustomerItems(){     // Not implemented, for now all get the same items
-        return items;
-    }
+    // Not implemented, for now all get the same items
+    getCustomerItems(address){return items;}
 
-    getItem(itemID){
-        return items[itemID];
-    }
+    getItem(itemID){return typeof(items[itemID]) == 'object' ? items[itemID]  : null;}
 
     updateSupplierAddress(supplierId, newAddress){
-        suppliers[supplierId].address = newAddress;
+        let addr = newAddress.toLowerCase();
+        suppliers[supplierId].address = addr;
         this.supplierOrderIndex[supplierId] = [];
-        this.supplierAddressIndex[newAddress] = supplierId;
+        this.supplierAddressIndex[addr] = supplierId;
     }
 
-    getSupplierAddress(supplierID){return suppliers[supplierID].address;}
+    getSupplierAddress(supplierID){return typeof(suppliers[supplierID]) == 'object' ? suppliers[supplierID].address : null;}
 
     getSupplierByAddress(address){
-        return typeof(suppliers[this.supplierAddressIndex[address]]) == 'object' ? suppliers[this.supplierAddressIndex[address]] : null;
+        let addr = address.toLowerCase();
+        return (typeof(this.supplierAddressIndex[addr]) == 'object' && typeof(suppliers[this.supplierAddressIndex[addr]]) == 'object') ? suppliers[this.supplierAddressIndex[addr]] : null;
     }
 
-    getSupplierParts(supplierId){
-        return this.supplierPartIndex[supplierId];
-    }
+    getSupplierParts(supplierId){return typeof(suppliers[supplierID]) == 'object' ? this.supplierPartIndex[supplierId] : null;}
 
     createOrder(customerAddress, itemID, amount, partsTotalPrice, fees){
         let id = this.nextOrderId++;
         this.orders[id] = {id, customerAddress, itemID, amount, escrowSlotId: null, partsTotalPrice, fees, state: 'unconfirmed'};
-        this.customerOrderIndex[customerAddress].push(id);
+        this.customerOrderIndex[customerAddress.toLowerCase()].push(id);
         let supplierIDs = items[itemID].getSupplierIDs();
         for(let supplierID in supplierIDs){
             this.supplierOrderIndex[supplierID].push(id);
@@ -89,6 +87,8 @@ class InMemoryDatabase {
         this.orders[orderID].escrowSlotId = slotID;
         this.orderEscrowSlotIndex[slotID] = orderID;
     }
+
+    getOrderByEscrowSlotId(slotId){return typeof(this.orderEscrowSlotIndex[slotId]) != 'undefined' && typeof(this.orders[this.orderEscrowSlotIndex[slotId]]) != 'undefined' ? this.orders[this.orderEscrowSlotIndex[slotId]] : null;}
 
     updateOrderState(orderID, newState){
         this.orders[orderID].state = newState;
