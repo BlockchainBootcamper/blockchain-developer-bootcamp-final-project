@@ -9,6 +9,7 @@ class BlockchainClient {
     contracts = {};
     contractABIs = {};
     account;
+    customerNextOrderFunding = {};      // maps customer addresses to a order ID
 
     constructor(configuration){
         this.web3 = new Web3(configuration.web3ProviderURL);
@@ -48,10 +49,37 @@ class BlockchainClient {
         paymentSplittingDefinition.recipients.push(this.account);
         paymentSplittingDefinition.amounts.push(this.contracts['uoa'].rebaseToTokenDecimals(order.fees).toString());
     
-        return this.contracts['escrowPaymentSplitter'].methods.openEscrowSlot(orderID, paymentSplittingDefinition).send({from: this.account, gasLimit: 300000}).then((response) => {
+        this.contracts['escrowPaymentSplitter'].methods.openEscrowSlot(orderID, paymentSplittingDefinition).send({from: this.account, gasLimit: 300000}).then((response) => {
             database.setOrderEscrowSlotID(orderID, response.events.EscrowSlotOpened.returnValues.slotId);
-            database.updateOrderState(orderID, 'confirmed');
+            database.updateOrderState(orderID, 'awaiting funding allowance');
         });    
+    }
+
+    setNextOrderToFund(customerAddress, orderID){
+        let database = VariableSharepoint.get('database');
+        let addr = customerAddress.toLowerCase();
+        if(typeof(this.customerNextOrderFunding[addr]) != 'undefined'){
+            database.updateOrderState(this.customerNextOrderFunding[addr], 'awaiting funding allowance');    
+        }
+        database.updateOrderState(orderID, 'awaiting funding');
+        this.customerNextOrderFunding[addr] = orderID;
+    }
+
+    handleOrderFunding(customerAddress){
+        let database = VariableSharepoint.get('database');
+        let addr = customerAddress.toLowerCase();
+        if(typeof(this.customerNextOrderFunding[addr]) == 'undefined'){return;}
+        Promise.all([this.contracts['uoa'].methods.allowance(addr, this.contracts['escrowPaymentSplitter']._address).call(), this.contracts['uoa'].methods.balanceOf(addr).call()]).then(([allowance, balance]) => {
+            let order = database.getOrder(this.customerNextOrderFunding[addr]);
+            let escrowAmount = this.contracts['uoa'].rebaseToTokenDecimals(order.partsTotalPrice + order.fees);
+            if(BlockchainClient.toBN(allowance).gte(escrowAmount) && BlockchainClient.toBN(balance).gte(escrowAmount)){
+                // TODO estimateGas
+                this.contracts['escrowPaymentSplitter'].methods.fundEscrowSlotFrom(order.escrowSlotId, addr).send({from: this.account, gasLimit: 300000}).then(() => {
+                    delete(this.customerNextOrderFunding[customerAddress]);
+                    database.updateOrderState(order.id, 'awaiting goods');
+                });
+            }
+        });
     }
 
     getContractOwnerAccount(){  // TODO
@@ -79,7 +107,9 @@ function extendTokenContract(contract, configuration){
     contract.rebaseToTokenDecimals = function(amount){
         if(!contract.ready){throw Error('Contract not ready');}
         // The split is necessary because BN.js doesn't support beeing created from numbers with decimals => first use currencyDecimalsFactor to bring the number to an integer + coinDecimalsAdjustedFactor to convert to the coinbase
-        return BlockchainClient.toBN(parseInt(amount * this.currencyDecimalsFactor)).mul(this.coinDecimalsAdjustedFactor);
+        let BN = BlockchainClient.toBN(parseInt(amount.toFixed(configuration.currencyDecimals) * this.currencyDecimalsFactor)).mul(this.coinDecimalsAdjustedFactor);
+        //console.log(amount, amount.toFixed(configuration.currencyDecimals), BN, BN.toString());
+        return BN;
     }
 
     contract.mint = function(address, amount){
@@ -92,27 +122,14 @@ function initializeContractEventListeners(tokenContract, escrowContract){
 
     tokenContract.events.Approval().on('data', event => {
         if(database.isCustomerAddress(event.returnValues.owner) && BlockchainClient.compareAddresses(event.returnValues.spender, escrowContract._address)){
-            Promise.all([tokenContract.methods.allowance(event.returnValues.owner, escrowContract._address).call(), tokenContract.methods.balanceOf(event.returnValues.owner).call()]).then(([allowance, balance]) => {
-                console.log('fill escrow? Approval event ', allowance, balance);
-                // TODO escrowContract.methods.fillEscrowSlotFrom();
-            });
+            VariableSharepoint.get('blockchainClient').handleOrderFunding(event.returnValues.owner);
         }
     });
 
     tokenContract.events.Transfer().on('data', event => {
         if(database.isCustomerAddress(event.returnValues.to)){
-            Promise.all([tokenContract.methods.allowance(event.returnValues.to, escrowContract._address).call(), tokenContract.methods.balanceOf(event.returnValues.to).call(event.returnValues.from)]).then(([allowance, balance]) => {
-                console.log('fill escrow? Transfer event ', allowance, balance);
-                // TODO escrowContract.methods.fillEscrowSlotFrom();
-            });
+            VariableSharepoint.get('blockchainClient').handleOrderFunding(event.returnValues.to);
         }
-        if(database.isCustomerAddress(event.returnValues.from)){
-            // update balance in DB
-        }
-    });
-
-    escrowContract.events.EscrowSlotFilled().on('data', event => {
-        if(database.doesEscrowSlotExist(event.returnValues.slotId)){database.updateOrderStateByEscrowSlotId(event.returnValues.slotId, 'awaiting goods');}
     });
 
     escrowContract.events.EscrowSlotSettled().on('data', event => {

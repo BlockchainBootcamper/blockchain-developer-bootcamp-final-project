@@ -26,7 +26,9 @@ router.get('/items', function(req, res, next) {
 });
 
 router.get('/customer/orders', async function(req, res, next) {
-    res.send({success: true, orders: database.getCustomerOrders(req.query.address)});
+    let orders = database.getCustomerOrders(req.query.address);
+    for(let orderID in orders){orders[orderID].escrowAmount = blockchainClient.getContract('uoa').rebaseToTokenDecimals(orders[orderID].partsTotalPrice + orders[orderID].fees).toString()}
+    res.send({success: true, orders: orders});
 });
 
 // *** Customer actions
@@ -39,6 +41,11 @@ router.post('/order', function(req, res, next) {
 
 router.post('/order/confirm', async function(req, res, next) {
     blockchainClient.handleEscrowSlotCreation(req.body.orderID);
+    res.send({success: true});
+});
+
+router.post('/order/fundNext', async function(req, res, next) {
+    blockchainClient.setNextOrderToFund(req.body.address, req.body.orderID);
     res.send({success: true});
 });
 
