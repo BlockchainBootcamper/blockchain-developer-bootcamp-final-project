@@ -21,14 +21,14 @@ contract EscrowPaymentSplitter is Ownable {
     // Main data storage structure
     struct EscrowSlot {
         uint id;
-        bool filled;
-        address payer;          // Set in fillEscrowSlot(), the only address allowed to call settleEscrowSlot()
+        bool funded;
+        address payer;          // Set in handleEscrowSlotFunding(), the only address allowed to call settleEscrowSlot()
         PaymentSplittingDefinition paymentSplittingDefinition;
     }
 
-    // Events: slot opened, filled, settled
+    // Events: slot opened, funded, settled
     event EscrowSlotOpened(uint externalId, uint slotId);
-    event EscrowSlotFilled(uint slotId);
+    event EscrowSlotFunded(uint slotId);
     event EscrowSlotSettled(uint slotId);
 
     // ***** State in storage *****
@@ -72,17 +72,37 @@ contract EscrowPaymentSplitter is Ownable {
     * @param slotId ID of the escrow slot
     * @return payment splitting definition - a struct with attributes recipients (type address[]) and amounts (uint[])
     */
-    function getPaymentSplittingDefition(uint slotId) public view returns(PaymentSplittingDefinition memory){
+    function getPaymentSplittingDefinition(uint slotId) public view returns(PaymentSplittingDefinition memory){
         uint slotIndex = getEscrowSlotIndex(slotId);                   // reverts if slot doesn't exist
         return escrowSlots[slotIndex].paymentSplittingDefinition;
     }
 
     /**
-    * @dev fills the escrow slot (i.e. transfers the value from the caller to the contract)
+    * @dev funds the escrow slot (i.e. transfers the value from the caller to the contract)
     *
     * @param slotId ID of the escrow slot
     */
-    function fillEscrowSlot(uint slotId) public {
+    function fundEscrowSlot(uint slotId) public {
+        handleEscrowSlotFunding(slotId, msg.sender);
+    }
+
+    /**
+    * @dev funds the escrow slot from another address than the caller. Can only be called by the contract owner (i.e. the supplier consolidator service)
+    *
+    * @param slotId ID of the escrow slot
+    * @param payer address of the escrow slot payer
+    */
+    function fundEscrowSlotFrom(uint slotId, address payer) public onlyOwner {
+        handleEscrowSlotFunding(slotId, payer);
+    }
+
+    /**
+    * @dev Internal handler which funds the escrow slot (i.e. transfers the value from the payer address to the contract) and updates escrow slot state
+    *
+    * @param slotId ID of the escrow slot
+    * @param payer address of the escrow slot payer
+    */
+    function handleEscrowSlotFunding(uint slotId, address payer) internal {
         uint slotIndex = getEscrowSlotIndex(slotId);                   // reverts if slot doesn't exist
         // compute total slot value from payment splitting definition
         uint val;
@@ -91,34 +111,34 @@ contract EscrowPaymentSplitter is Ownable {
         }
         // transfer value into tbis contract to escrow it
         IERC20 tokenContract = IERC20(tokenContractAddress);
-        tokenContract.transferFrom(msg.sender, address(this), val);     // reverts if value can't be collectedd
+        tokenContract.transferFrom(payer, address(this), val);     // reverts if value can't be collectedd
         // update state
-        escrowSlots[slotIndex].payer = msg.sender;
-        escrowSlots[slotIndex].filled = true;
-        emit EscrowSlotFilled(slotId);
+        escrowSlots[slotIndex].payer = payer;
+        escrowSlots[slotIndex].funded = true;
+        emit EscrowSlotFunded(slotId);
     }
 
     /**
-    * @dev getter for a slot's filled status (i.e. whether it has been filled with value aka paid)
+    * @dev getter for a slot's funding status
     *
     * @param slotId ID of the escrow slot
-    * @return fill status of the slot - if true, value was transfered
+    * @return funding status of the slot - if true, slot value is escrowed by the contract
     */
-    function isEscrowSlotFilled(uint slotId) public view returns(bool) {
+    function isEscrowSlotFunded(uint slotId) public view returns(bool) {
         uint slotIndex = getEscrowSlotIndex(slotId);
-        return escrowSlots[slotIndex].filled;
+        return escrowSlots[slotIndex].funded;
     }
 
     /**
     * @dev getter for a slot's escrowed amount for to the caller
     *
     * @param slotId ID of the escrow slot
-    * @return a uint for the amount escrowed by the contract for the caller, 0 if the slot has not been filled or if the caller is not in the payment splitting 
+    * @return a uint for the amount escrowed by the contract for the caller, 0 if the slot has not been funded or if the caller is not in the payment splitting 
     *         definition
     */
     function getEscrowedValue(uint slotId) public view returns(uint) {
         uint slotIndex = getEscrowSlotIndex(slotId);
-        if(escrowSlots[slotIndex].filled){
+        if(escrowSlots[slotIndex].funded){
             for(uint i = 0; i < escrowSlots[slotIndex].paymentSplittingDefinition.recipients.length; i++){
                 if(escrowSlots[slotIndex].paymentSplittingDefinition.recipients[i] == msg.sender){
                     return escrowSlots[slotIndex].paymentSplittingDefinition.amounts[i];
@@ -129,14 +149,14 @@ contract EscrowPaymentSplitter is Ownable {
     }
 
     /**
-    * @dev executes the payment splitting definition (i.e. transfers the escrowed amount to the recipients). Can only be called by the address that filled the slot
+    * @dev executes the payment splitting definition (i.e. transfers the escrowed amount to the recipients). Can only be called by the address that funded the slot
     *
     * @param slotId ID of the escrow slot
     */
     function settleEscrowSlot(uint slotId) public {
         uint slotIndex = getEscrowSlotIndex(slotId);            // reverts if slot doesn't exist
-        // validate conditions for settling: slot was filled + it's the address that filled it that is calling
-        require(escrowSlots[slotIndex].filled, string(abi.encodePacked("Slot with ID ", slotId.toString(), " was not filled and can't be settled")));
+        // validate conditions for settling: slot was funded + it's the address that funded it that is calling
+        require(escrowSlots[slotIndex].funded, string(abi.encodePacked("Slot with ID ", slotId.toString(), " was not funded and can't be settled")));
         require(escrowSlots[slotIndex].payer == msg.sender, "Slot can only be settled by payer");
         // execute payment splitting definition
         IERC20 tokenContract = IERC20(tokenContractAddress);
