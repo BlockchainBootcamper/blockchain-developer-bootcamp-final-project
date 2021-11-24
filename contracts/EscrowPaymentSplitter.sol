@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Unlicensed
-pragma solidity ^0.8.10;
+pragma solidity 0.8.10;
 import '@openzeppelin/contracts/access/Ownable.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import '@openzeppelin/contracts/utils/math/SafeMath.sol';
 import '@openzeppelin/contracts/utils/Strings.sol';
 
 
 contract EscrowPaymentSplitter is Ownable {
+    using SafeMath for uint;
     using Strings for uint256;
 
     // ***** Data type definitions *****
@@ -30,11 +32,13 @@ contract EscrowPaymentSplitter is Ownable {
     event EscrowSlotOpened(uint externalId, uint slotId);
     event EscrowSlotFunded(uint slotId);
     event EscrowSlotSettled(uint slotId);
+    event WithdrawalAllowance(address recipient, uint amount);
 
     // ***** State in storage *****
-    EscrowSlot[] escrowSlots;
-    uint lastEscrowSlotId;
-    address tokenContractAddress;
+    EscrowSlot[] private escrowSlots;
+    uint private lastEscrowSlotId;
+    address public tokenContractAddress;
+    mapping (address => uint) public recipientFunds;
 
     // ***** Methods *****
 
@@ -108,15 +112,17 @@ contract EscrowPaymentSplitter is Ownable {
         // compute total slot value from payment splitting definition
         uint val;
         for(uint i = 0; i < escrowSlots[slotIndex].paymentSplittingDefinition.recipients.length; i++){
-            val += escrowSlots[slotIndex].paymentSplittingDefinition.amounts[i];
+            val = SafeMath.add(val, escrowSlots[slotIndex].paymentSplittingDefinition.amounts[i]);
         }
         // transfer value into tbis contract to escrow it
         IERC20 tokenContract = IERC20(tokenContractAddress);
-        tokenContract.transferFrom(payer, address(this), val);     // reverts if value can't be collectedd
-        // update state
-        escrowSlots[slotIndex].payer = payer;
-        escrowSlots[slotIndex].funded = true;
-        emit EscrowSlotFunded(slotId);
+        bool success = tokenContract.transferFrom(payer, address(this), val);     // reverts if value can't be collectedd
+        // update state if successful
+        if(success){
+            escrowSlots[slotIndex].payer = payer;
+            escrowSlots[slotIndex].funded = true;
+            emit EscrowSlotFunded(slotId);
+        }
     }
 
     /**
@@ -160,9 +166,9 @@ contract EscrowPaymentSplitter is Ownable {
         require(escrowSlots[slotIndex].funded, string(abi.encodePacked("Slot with ID ", slotId.toString(), " was not funded and can't be settled")));
         require(escrowSlots[slotIndex].payer == msg.sender, "Slot can only be settled by payer");
         // execute payment splitting definition
-        IERC20 tokenContract = IERC20(tokenContractAddress);
         for(uint i = 0; i < escrowSlots[slotIndex].paymentSplittingDefinition.recipients.length; i++){
-            tokenContract.transfer(escrowSlots[slotIndex].paymentSplittingDefinition.recipients[i], escrowSlots[slotIndex].paymentSplittingDefinition.amounts[i]);
+            recipientFunds[escrowSlots[slotIndex].paymentSplittingDefinition.recipients[i]] = SafeMath.add(recipientFunds[escrowSlots[slotIndex].paymentSplittingDefinition.recipients[i]], escrowSlots[slotIndex].paymentSplittingDefinition.amounts[i]);
+            emit WithdrawalAllowance(escrowSlots[slotIndex].paymentSplittingDefinition.recipients[i], recipientFunds[escrowSlots[slotIndex].paymentSplittingDefinition.recipients[i]]);
         }
         // Remove escrow slot
         for(uint i = slotIndex; i < (escrowSlots.length - 1); i++){
@@ -170,6 +176,18 @@ contract EscrowPaymentSplitter is Ownable {
         }
         escrowSlots.pop();
         emit EscrowSlotSettled(slotId);
+    }
+
+    /**
+     * @dev transfer funds held for the caller to its own address
+     */
+    function getReceivedFunds() public {
+        require(recipientFunds[msg.sender] > 0, 'No funds to withdraw');
+        IERC20 tokenContract = IERC20(tokenContractAddress);
+        bool success = tokenContract.transfer(msg.sender, recipientFunds[msg.sender]);
+        if(success){
+            recipientFunds[msg.sender] = 0;
+        }
     }
 
     // *** Internal helper

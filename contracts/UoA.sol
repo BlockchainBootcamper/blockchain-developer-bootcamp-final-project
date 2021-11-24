@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Unlicensed
-pragma solidity ^0.8.10;
+pragma solidity 0.8.10;
 import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
 
-contract UoA is ERC20, Ownable {
+contract UoA is Ownable, ERC20 {
     /**
     * @dev contract constructor. Set the owner and the token contract and the name/symbol of the ERC20
     */

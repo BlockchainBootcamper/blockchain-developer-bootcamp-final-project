@@ -131,13 +131,16 @@ contract('EscrowPaymentSplitter', accounts => {
             });
         });
     });
-    it('Should distribute the appropriate UoA amounts when settleEscrowSlot() is called, and emit the EscrowSlotSettled event', () => {
+    let addressCheckedAfterSettlement, amountAfterSettlement;
+    it('Should update the internal balance of the recipient addresses when settleEscrowSlot() is called, and emit the WithdrawalAllowance and EscrowSlotSettled events', () => {
         return Promise.all([EscrowPaymentSplitter.deployed(), UoA.deployed()]).then(([instance, uoaInstance]) => {
             let mintAmount = 2000;
             let slotRecipients = [accounts[2], accounts[3], accounts[4]];
-            let slotAmountsPerCustomers = [slotAmount, slotAmount * 2, slotAmount * 11];
+            let slotAmountPerRecipient = [slotAmount, slotAmount * 2, slotAmount * 11];
             let slotAmountTotal = 14 * slotAmount;
-            return instance.openEscrowSlot(4, {recipients: slotRecipients, amounts: slotAmountsPerCustomers}).then(response => {
+            addressCheckedAfterSettlement = slotRecipients[0];
+            amountAfterSettlement = slotAmountPerRecipient[0];
+            return instance.openEscrowSlot(4, {recipients: slotRecipients, amounts: slotAmountPerRecipient}).then(response => {
                 slotId = response.logs[0].args.slotId.toNumber();
                 return uoaInstance.mint(accounts[1], mintAmount);
             }).then(() => {
@@ -149,14 +152,33 @@ contract('EscrowPaymentSplitter', accounts => {
                 return instance.settleEscrowSlot(slotId, {from: accounts[1]});
             }).then(response => {
                 escrowBalance -= slotAmountTotal;
-                assert.equal(response.logs[0].event, 'EscrowSlotSettled', 'An EscrowSlotSettled event was not emitted');
-                assert.equal(response.logs[0].args.slotId.toNumber(), slotId, 'The escrow slot ID doesn\'t match');
-                return Promise.all([uoaInstance.balanceOf(instance.address), uoaInstance.balanceOf(slotRecipients[0]), uoaInstance.balanceOf(slotRecipients[1]), uoaInstance.balanceOf(slotRecipients[2])]);
-            }).then(([escrowBalanceResponse, receipient0Balance, receipient1Balance, receipient2Balance]) => {
-                assert.equal(escrowBalanceResponse.toNumber(), escrowBalance, 'UoA balance of escrow contract doesn\'t show the correct amount');
-                assert.equal(receipient0Balance.toNumber(), slotAmountsPerCustomers[0], 'UoA balance of a recipient doesn\'t show the correct amount');
-                assert.equal(receipient1Balance.toNumber(), slotAmountsPerCustomers[1], 'UoA balance of a recipient doesn\'t show the correct amount');
-                assert.equal(receipient2Balance.toNumber(), slotAmountsPerCustomers[2], 'UoA balance of a recipient doesn\'t show the correct amount');
+                assert.equal(response.logs[0].event, 'WithdrawalAllowance', 'An WithdrawalAllowance event was not emitted');
+                assert.equal(response.logs[0].args.recipient, slotRecipients[0], 'The recipient address doesn\'t match');
+                assert.equal(response.logs[0].args.amount.toNumber(), slotAmountPerRecipient[0], 'The recipient\'s allowance amount doesn\'t match');
+                assert.equal(response.logs[1].event, 'WithdrawalAllowance', 'An WithdrawalAllowance event was not emitted');
+                assert.equal(response.logs[1].args.recipient, slotRecipients[1], 'The recipient address doesn\'t match');
+                assert.equal(response.logs[1].args.amount.toNumber(), slotAmountPerRecipient[1], 'The recipient\'s allowance amount doesn\'t match');
+                assert.equal(response.logs[2].event, 'WithdrawalAllowance', 'An WithdrawalAllowance event was not emitted');
+                assert.equal(response.logs[2].args.recipient, slotRecipients[2], 'The recipient address doesn\'t match');
+                assert.equal(response.logs[2].args.amount.toNumber(), slotAmountPerRecipient[2], 'The recipient\'s allowance amount doesn\'t match');
+                assert.equal(response.logs[3].event, 'EscrowSlotSettled', 'An EscrowSlotSettled event was not emitted');
+                assert.equal(response.logs[3].args.slotId.toNumber(), slotId, 'The escrow slot ID doesn\'t match');
+            });
+        });
+    });
+    it('Should return the correct balance when the getter on recipientFunds is called', () => {
+        return EscrowPaymentSplitter.deployed().then(instance => {
+            return instance.recipientFunds(addressCheckedAfterSettlement).then(balance => {
+                assert.equal(balance.toNumber(), amountAfterSettlement, 'Contract\'s recipientFunds balance after settlement doesn\'t match expected amount');
+            });
+        });
+    });
+    it('Should transfer the correct amount when getReceivedFunds() is called', () => {
+        return Promise.all([EscrowPaymentSplitter.deployed(), UoA.deployed()]).then(([instance, uoaInstance]) => {
+            return instance.getReceivedFunds({from : addressCheckedAfterSettlement}).then(() => {
+                return uoaInstance.balanceOf(addressCheckedAfterSettlement);
+            }).then(balance => {
+                assert.equal(balance.toNumber(), amountAfterSettlement, 'UoA contract balance expected after transfer doesn\'t match expected amount');
             });
         });
     });
@@ -192,6 +214,11 @@ contract('EscrowPaymentSplitter', accounts => {
     it('Should revert if another address than the payer calls settleEscrowSlot()', () => {
         return EscrowPaymentSplitter.deployed().then(instance => {
             return catchRevert(instance.settleEscrowSlot(fundedEscrowSlotId, {from: accounts[1]}), 'Slot can only be settled by payer');
+        });
+    });
+    it('Should revert if an address with a recipientFunds balance of 0 calls getReceivedFunds()', () => {
+        return EscrowPaymentSplitter.deployed().then(instance => {
+            return catchRevert(instance.getReceivedFunds({from: accounts[0]}), 'No funds to withdraw');
         });
     });
     it('Should revert if getPaymentSplittingDefinition(), fundEscrowSlot(), fundEscrowSlotFrom(), isEscrowSlotFunded(), getEscrowedValue() or settleEscrowSlot() are called on a slot ID the contract doesn\'t know', () => {
