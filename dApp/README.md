@@ -5,3 +5,6 @@ Webservice implemented in plain Javascript. Uses Express (NodeJS webserver) with
 A supply consolidation service has 3 types of actors: 1. suppliers 2. customers and the service provider itself. This codebase provides a user interface and API for the customers and suppliers and acts as service provider.
 
 To run the dApp, call `DEBUG=dapp:* npm start`
+
+## TODO
+Add network detection!

@@ -28,6 +28,7 @@ const handleWeb3AccountsEvent = function(accounts){
 }
 
 const initializeSmartContract = function(id){
+    console.log('Smart contract init for', id);
     if(id == 'uoa'){
         contracts[id].methods.decimals().call().then(decimals => {token.decimalsFactor = toBN(10).pow(toBN(decimals));});
         contracts[id].methods.symbol().call().then(symbol => {token.symbol = symbol;});
@@ -48,14 +49,19 @@ const initializeSmartContract = function(id){
                 notify('Escrow payment splitter contract: escrow slot opened event - order ID '+event.returnValues.externalId+' has slot ID '+event.returnValues.slotId);
                 orders[event.returnValues.externalId].escrowSlotId = event.returnValues.slotId;
                 orderEscrowSlotIndex[event.returnValues.slotId] = event.returnValues.externalId;
-                awaitingFundingOrderIDs.push(event.returnValues.externalId);
-                handleOrderStateTransition(event.returnValues.externalId, 'awaiting funding');
+                if(!awaitingFundingOrderIDs.includes(event.returnValues.externalId)){
+                    awaitingFundingOrderIDs.push(event.returnValues.externalId);
+                }
+                handleOrderStateTransition(event.returnValues.externalId, 'awaiting funding allowance');
             }
         });
         contracts[id].events.EscrowSlotFunded().on('data', event => {
             if(typeof(orderEscrowSlotIndex[event.returnValues.slotId]) != 'undefined'){
-                notify('Escrow payment splitter contract: escrow slot funded event - slot ID '+event.returnValues.slotId+ ' (order ID '+orders[orderEscrowSlotIndex[event.returnValues.slotId]].id+' funded');
-                handleOrderStateTransition(orders[orderEscrowSlotIndex[event.returnValues.slotId]].id, 'awaiting goods');
+                let order = orders[orderEscrowSlotIndex[event.returnValues.slotId]];
+                notify('Escrow payment splitter contract: escrow slot funded event - slot ID '+event.returnValues.slotId+ ' (order ID '+order.id+') funded');
+                awaitingFundingOrderIDs.splice(awaitingFundingOrderIDs.indexOf(order.id), 1);
+                fundingAllowedOrderID = null;
+                handleOrderStateTransition(order.id, 'awaiting goods');
             }
         });
         contracts[id].events.EscrowSlotSettled().on('data', event => {
@@ -183,7 +189,7 @@ const confirmOrder = function(orderID){
     //contracts['uoa'].methods.approve(contracts['escrowPaymentSplitter']._address, orders[orderID].escrowAmount).send({from: customer.address}).then(response => {
         //notify('OK', msgID);
     let msgID = notify('API: confirming order ID '+orderID+' ...');
-    callAPI('order/confirm', {method: 'POST', body: {orderID}}).then(() => {
+    callAPI('order/confirm', {method: 'POST', body: {address: customer.address, orderID}}).then(() => {
         notify('OK - will open escrow slot', msgID);
         handleOrderStateTransition(orderID, 'opening escrow slot');
     }).catch(error => {
@@ -203,17 +209,20 @@ const fund = function(orderID){
     let revert = handleOrderStateTransition(orderID, 'funding', 'fundEscrowSlotOrder'+orderID);
     //console.log(orders[orderID]);
     callAPI('order/fundNext', {method: 'POST', body: {address: customer.address, orderID}}).then(() => {
+        fundingAllowedOrderID = orderID;
+        renderOrdersAwaitingFunding();
         contracts['uoa'].methods.approve(contracts['escrowPaymentSplitter']._address, orders[orderID].escrowAmount).send({from: customer.address}).then(response => {
             notify('OK', msgID);
             //let msgID = notify('API: confirming order '+orderID+' ...');
             //callAPI('order/confirm', {method: 'POST', body: {orderID}}).then(notify('OK - will open escrow slot', msgID)).catch(error => notify('Failure - '+error.message, msgID, true));
             //handleOrderStateTransition(orderID, 'opening escrow slot');
             //if(enoughFunds(orderID)){fillEscrowSlot(orderID);}
-            fundingAllowedOrderID = orderID;
+            
             console.log('funding allowed order is set to', orderID, ', orders awaiting funding', awaitingFundingOrderIDs)
             handleOrderStateTransition(orderID, 'awaiting escrow slot funding');
         }).catch(error => {
             notify('Failure - '+error.message, msgID, true);
+            fundingAllowedOrderID = null;
             revert();
         });
     });
@@ -324,7 +333,7 @@ const renderOrder = function(orderID, refreshOwnRow = false){
         //buttons.push(createButton(enoughFunds(orderID) ? 'Confirm & fund order' : 'Confirm order', {id: 'confirmOrder'+orderID, onclick: 'confirmOrder('+orderID+')'}, order.state == 'confirming'));
         buttons.push(createButton('Confirm order', {id: 'confirmOrder'+orderID, onclick: 'confirmOrder('+orderID+')'}, order.state == 'confirming'));
     }
-    if(order.state == 'awaiting funding' || order.state == 'escrowing funds'){
+    if(order.state == 'awaiting funding allowance' || order.state == 'escrowing funds'){
         let notEnoughFunds = !enoughFunds(orderID);
         //buttons.push(createButton('Escrow funds', {id: 'escrowOrderFunds'+orderID, onclick: 'fillEscrowSlot('+orderID+')'}, order.state == 'escrowing funds' || notEnoughFunds));
         buttons.push(createButton('Trigger escrow slot funding', {id: 'fundEscrowSlotOrder'+orderID, onclick: 'fund('+orderID+')'}, fundingAllowedOrderID != null || order.state == 'escrowing funds' || notEnoughFunds));
@@ -333,8 +342,8 @@ const renderOrder = function(orderID, refreshOwnRow = false){
     if(order.state == 'awaiting goods'|| order.state == 'settling escrow'){
         buttons.push(createButton('Confirm goods reception', {id: 'settleEscrow'+orderID, onclick: 'settleEscrowSlot('+orderID+')'}, order.state == 'settling escrow'));
     }
-    if(order.state == 'opening escrow slot' || order.state == 'funding' || order.state == 'escrowing funds' || order.state == 'settling escrow'){
-        state.push(createTag('img', {src: "images/loading.gif", width: 20, class: "spinner"}));
+    if(order.state == 'opening escrow slot' || order.state == 'funding' || order.state == 'awaiting escrow slot funding' || order.state == 'settling escrow'){  //order.state == 'escrowing funds' ||
+        state.push(createTag('img', {src: 'images/loading.gif', width: 20, class: 'spinner'}));
     }
     state.push(order.state);
     let row = new TableRow(false, {id: 'order'+orderID+'Row'}).addCells([order.id, items[order.itemID].name+' (ID '+order.itemID+')', order.amount, labelTokenAmount(order.partsTotalPrice), labelTokenAmount(order.fees), labelTokenAmount(order.partsTotalPrice + order.fees), state, buttons]);
@@ -354,7 +363,7 @@ const handleOrderStateTransition = function(orderID, newState, buttonToDisable =
     revertor = function(){handleOrderStateTransition(orderID, currentState);};
     orders[orderID].state = newState;
     renderOrder(orderID, true);
-    if(newState == 'awaiting escrow slot funding'){
+    if(newState == 'awaiting goods'){
         renderOrdersAwaitingFunding();
     }
     return revertor;
@@ -362,6 +371,7 @@ const handleOrderStateTransition = function(orderID, newState, buttonToDisable =
 
 const renderOrdersAwaitingFunding = function(){
     for(let awaitingFundingOrderID of awaitingFundingOrderIDs){
+        console.log(awaitingFundingOrderID);
         renderOrder(awaitingFundingOrderID, true);
     }
 }
