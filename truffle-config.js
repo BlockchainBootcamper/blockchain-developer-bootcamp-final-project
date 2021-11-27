@@ -10,10 +10,14 @@ module.exports = {
     },
     ropsten: {
       provider: function() {
-        return new HDWalletProvider(env.MNEMONIC, "https://ropsten.infura.io/v3/"+env.INFURA_API_KEY);
+        return new HDWalletProvider({   // for configuration options, see https://www.npmjs.com/package/@truffle/hdwallet-provider
+          mnemonic: {phrase: env.MNEMONIC},
+          providerOrUrl: env.ACCESS_PROVIDER_HTTPS_URL,
+          addressIndex: 0
+      });
       },
       network_id: 3,
-      gas: 4000000          //make sure this gas allocation isn't over 4M, which is the max
+      gas: 8000000          // Ropsten maximum, see https://ropsten.etherscan.io/blocks
     }
   },
 
