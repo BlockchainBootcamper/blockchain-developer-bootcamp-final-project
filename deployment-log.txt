@@ -1,0 +1,74 @@
+Starting migrations...
+======================
+> Network name:    'ropsten'
+> Network id:      3
+> Block gas limit: 8000000 (0x7a1200)
+
+
+1_initial_migration.js
+======================
+
+   Replacing 'Migrations'
+   ----------------------
+   > transaction hash:    0x4849059b85f85dcca138d27ab2e97e7f23f1e2c772bfb19731272a11364d2795
+   > Blocks: 6            Seconds: 73
+   > contract address:    0xf76999A95209F9E992f016CD96d3ecdD2d3b8bC3
+   > block number:        11504285
+   > block timestamp:     1637997804
+   > account:             0x795a86555Bf44960c39064D6AEE9D9b63A264eF7
+   > balance:             9.584698032814703059
+   > gas used:            250142 (0x3d11e)
+   > gas price:           2.500002431 gwei
+   > value sent:          0 ETH
+   > total cost:          0.000625355608095202 ETH
+
+
+   > Saving migration to chain.
+   > Saving artifacts
+   -------------------------------------
+   > Total cost:     0.000625355608095202 ETH
+
+
+2_contracts.js
+==============
+
+   Replacing 'UoA'
+   ---------------
+   > transaction hash:    0x79808c305a66db5eee33ff519b421166ac61769aec85359b7d73f8f0a56a3e5a
+   > Blocks: 7            Seconds: 86
+   > contract address:    0xcaF4cf3BC2970563c157d369F70b42b7a6d3d00A
+   > block number:        11504295
+   > block timestamp:     1637997930
+   > account:             0x795a86555Bf44960c39064D6AEE9D9b63A264eF7
+   > balance:             9.580151022154124491
+   > gas used:            1772890 (0x1b0d5a)
+   > gas price:           2.50000173 gwei
+   > value sent:          0 ETH
+   > total cost:          0.0044322280670997 ETH
+
+
+   Replacing 'EscrowPaymentSplitter'
+   ---------------------------------
+   > transaction hash:    0xf2f52ddd1175efc40484cc9bc5fa65f1afa11078d0fec76c39c21faa1190da88
+   > Blocks: 4            Seconds: 137
+   > contract address:    0xba8865E97A0F2228B84c8a657E96868B8045C9F1
+   > block number:        11504300
+   > block timestamp:     1637998053
+   > account:             0x795a86555Bf44960c39064D6AEE9D9b63A264eF7
+   > balance:             9.573822720687547618
+   > gas used:            2531319 (0x269ff7)
+   > gas price:           2.500001567 gwei
+   > value sent:          0 ETH
+   > total cost:          0.006328301466576873 ETH
+
+
+   > Saving migration to chain.
+   > Saving artifacts
+   -------------------------------------
+   > Total cost:     0.010760529533676573 ETH
+
+
+Summary
+=======
+> Total deployments:   3
+> Final cost:          0.011385885141771775 ETH
