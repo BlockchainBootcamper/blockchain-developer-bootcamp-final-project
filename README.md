@@ -69,14 +69,14 @@ Please follow the instructions for the smart-contract compilation first.
 
 - To a public network:
     - run `npm install` in the repository folder to make sure you have all dependencies installed, including those marked as development-only
-    - choose on which network you want to deploy
+    - choose on which network you want to deploy - [official guide](https://ethereum.org/en/developers/docs/networks/)
     - unless you know exactly what you're doing, create a separate wallet (f.ex. by installing Metamask) of which you export the 12 or 24 word mnemonic which has to be kept secret
-    - if you target a testnet, use your favorite search engine to find a faucet for the network you selected and get some test Ether for the address you wish to use to deploy
+    - if you target a testnet, use your favorite search engine to find a faucet for the network you selected and get some test Ether for the address you wish to use to deploy. Deployment costs should cost around 0.0114 Ether, migrations included.
     - unless you want to run a network node yourself, go to a service like Infura to get an access to the network - this kind of service will provide you with an API key that has to be kept secret
     - create a copy of `.env.example` and call it `.env`, put the mnemonic and the API key in the corresponding entries
     - if you selected another network than Ropsten: adapt the `truffle-config.js` by replacing the `ropsten` key by the name of the selected network and adapt the service provider URL as well
     - if you use another service than Infura: adapt the `truffle-config.js` by setting the correct URL for your provider
-    - if you wish to use another address than the first one your wallet provides, adapt the `truffle-config.js` by setting the correct address index (0-based counter). Make sure it's the one which has the test Ether
+    - if you wish to use another address than the first one your wallet provides, adapt the `truffle-config.js` by setting the correct address index (0-based counter).
 
 ### Use the command-line client or front-end
 Please check out the corresponding documentation in [dApp](./dApp) for the frontend and [cli_client](./cli_client) for the command-line client.
