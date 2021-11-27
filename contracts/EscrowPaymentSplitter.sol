@@ -5,56 +5,93 @@ import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import '@openzeppelin/contracts/utils/math/SafeMath.sol';
 import '@openzeppelin/contracts/utils/Strings.sol';
 
-
+/**
+ * @title Escrow & payment splitter smart contract for a supply consolidation service usecase
+ * @author DonTseTse
+ * @notice Escrow working with 'slots', which are created with a payment splitting definition, funded and finally settled. Maintains a recipient balance which is credited on settlement
+ */
 contract EscrowPaymentSplitter is Ownable {
+    ///@dev uses OpenZeppelin's SafeMath for arithmetics in the contract
     using SafeMath for uint;
+    ///@dev uses OpenZeppelin's Strings utility to be able to have numbers (the slot ID) in revert messages
     using Strings for uint256;
 
     // ***** Data type definitions *****
-    /** Storage structure to represent recipients and amounts in an array of native Solidity types instead of an array of custom type => see ../design_choices.md 
-     *  for the reasons
-     *  each payment splitter is the one index in both arrays, i.e. splitter = <recipients[i], amounts[i]>
+    /** 
+     * @dev data structure to represent recipients and amounts in an array of native Solidity types instead of an array of custom type => see ../design_choices.md for the reasons
+     * @dev each payment splitter is the one index in both arrays, i.e. splitter = <recipients[i], amounts[i]>
      */
     struct PaymentSplittingDefinition {
         address[] recipients;
         uint[] amounts;
     }
     
-    // Main data storage structure
+    ///@dev data structure to represent an escrow slot. Payer address is the only one allowed to settle the slot once funded
     struct EscrowSlot {
         uint id;
         bool funded;
-        address payer;          // Set in handleEscrowSlotFunding(), the only address allowed to call settleEscrowSlot()
+        address payer;
         PaymentSplittingDefinition paymentSplittingDefinition;
     }
 
-    // Events: slot opened, funded, settled
-    event EscrowSlotOpened(uint externalId, uint slotId);
-    event EscrowSlotFunded(uint slotId);
-    event EscrowSlotSettled(uint slotId);
-    event WithdrawalAllowance(address recipient, uint amount);
+    /**
+     * @dev emitted when a slot is opened
+     * @param externalId ID with which the escrow slot is linked in the calling system (usually an order ID). Has no meaning inside the contract
+     * @param slotId ID of the opened escrow slot - used in all escrow specific methods
+     */
+    event EscrowSlotOpened(uint indexed externalId, uint indexed slotId);
+    /**
+     * @dev emitted when a slot is funded
+     * @param slotId ID of the slot which was funded
+     */
+    event EscrowSlotFunded(uint indexed slotId);
+    /**
+     * @dev emitted when a recipient balance is modified during settlement or on fund withdrawal
+     * @param recipient address of which the balance is modified
+     * @param balance new withdrawal allowance
+     */
+    event WithdrawalAllowance(address indexed recipient, uint balance);
+    /**
+     * @dev emitted when a slot is settled
+     * @param slotId ID of the slot which was settled
+     */
+    event EscrowSlotSettled(uint indexed slotId);
 
     // ***** State in storage *****
+    /// Escrow slot state variable
     EscrowSlot[] private escrowSlots;
+    /// Escrow slot counter state variable, used to give each slot a unique ID
     uint private lastEscrowSlotId;
+    /// Address of the ERC20 token contract
     address public tokenContractAddress;
+    /// Balance mapping for funds received upon escrow slot settlement
     mapping (address => uint) public recipientFunds;
 
     // ***** Methods *****
 
     /**
-    * @dev contract constructor. Set the owner and the token contract
-    *
+    * @dev contract constructor. Sets the owner via Ownable() as well as the token contract address
     * @param tokenContract address of the token contract
     */
     constructor(address tokenContract) Ownable(){
         tokenContractAddress = tokenContract;
     }
 
+    /* Note: the goal is to return more specific error messages on error / Ether transfer than the basic undifferentiated revert which gets triggered if fallback() and/or receive() are not implemented
+             Weird: if both are implemented the criteria which one is called is not msg.value, but msg.data 
+             => if there's no data receive() is called, even if there's no Ether
+             => even with receive() implemented fallback() should be declared payable otherwise calls with data and value still get the basic revert
+             A fallback() handling it all would be more comprehensive but when it's payable the compiler warns it would like to see a receive() as well :(
+    */
+    /// @dev gets executed when the contract is called with data which doesn't match a function signature (regardless whether there's Ether sent or not, see note above)
+    fallback() external payable {revert('Erronous call, fallback() triggered');}
+    /// @dev gets executed when there's no data sent in the transaction (even if there's no Ether, see note above)
+    receive() external payable {revert(msg.value > 0 ? 'Contract doesn\'t accept Ether' : 'Erronous call without data nor value, receive() triggered');}
+    
     /**
-    * @dev opens an escrow slot. Only accessible to the contract owner (i.e. the supplier consolidator service)
-    *
-    * @param externalId ID of external source passed through to the EscrowSlotOpened
+    * @notice opens an escrow slot
+    * @dev only accessible to the contract owner (i.e. the supply consolidation service)
+    * @param externalId ID of external source passed through to the EscrowSlotOpened event
     * @param paymentSplittingDefinition struct to describe payment splitting
     * @return ID of the escrow slot
     */
@@ -71,8 +108,7 @@ contract EscrowPaymentSplitter is Ownable {
     }
 
     /**
-    * @dev getter for a slot's payment splitting definition
-    *
+    * @notice getter for a slot's payment splitting definition
     * @param slotId ID of the escrow slot
     * @return payment splitting definition - a struct with attributes recipients (type address[]) and amounts (uint[])
     */
@@ -82,8 +118,7 @@ contract EscrowPaymentSplitter is Ownable {
     }
 
     /**
-    * @dev funds the escrow slot (i.e. transfers the value from the caller to the contract)
-    *
+    * @notice funds the escrow slot from the caller (i.e. transfers the value from the caller to the contract)
     * @param slotId ID of the escrow slot
     */
     function fundEscrowSlot(uint slotId) public {
@@ -91,8 +126,8 @@ contract EscrowPaymentSplitter is Ownable {
     }
 
     /**
-    * @dev funds the escrow slot from another address than the caller. Can only be called by the contract owner (i.e. the supplier consolidator service)
-    *
+    * @notice funds the escrow slot from the payer address (i.e. transfers the value from the payer address to the contract)
+    * @dev can only be called by the contract owner (i.e. the supply consolidation service)
     * @param slotId ID of the escrow slot
     * @param payer address of the escrow slot payer
     */
@@ -101,33 +136,7 @@ contract EscrowPaymentSplitter is Ownable {
     }
 
     /**
-    * @dev Internal handler which funds the escrow slot (i.e. transfers the value from the payer address to the contract) and updates escrow slot state
-    *
-    * @param slotId ID of the escrow slot
-    * @param payer address of the escrow slot payer
-    */
-    function handleEscrowSlotFunding(uint slotId, address payer) internal {
-        uint slotIndex = getEscrowSlotIndex(slotId);                   // reverts if slot doesn't exist
-        require(!escrowSlots[slotIndex].funded, string(abi.encodePacked("Slot with ID ", slotId.toString(), " was already funded")));
-        // compute total slot value from payment splitting definition
-        uint val;
-        for(uint i = 0; i < escrowSlots[slotIndex].paymentSplittingDefinition.recipients.length; i++){
-            val = SafeMath.add(val, escrowSlots[slotIndex].paymentSplittingDefinition.amounts[i]);
-        }
-        // transfer value into tbis contract to escrow it
-        IERC20 tokenContract = IERC20(tokenContractAddress);
-        bool success = tokenContract.transferFrom(payer, address(this), val);     // reverts if value can't be collectedd
-        // update state if successful
-        if(success){
-            escrowSlots[slotIndex].payer = payer;
-            escrowSlots[slotIndex].funded = true;
-            emit EscrowSlotFunded(slotId);
-        }
-    }
-
-    /**
-    * @dev getter for a slot's funding status
-    *
+    * @notice getter for a slot's funding status
     * @param slotId ID of the escrow slot
     * @return funding status of the slot - if true, slot value is escrowed by the contract
     */
@@ -137,11 +146,9 @@ contract EscrowPaymentSplitter is Ownable {
     }
 
     /**
-    * @dev getter for a slot's escrowed amount for to the caller
-    *
+    * @notice getter returning a slot's escrowed amount for the caller
     * @param slotId ID of the escrow slot
-    * @return a uint for the amount escrowed by the contract for the caller, 0 if the slot has not been funded or if the caller is not in the payment splitting 
-    *         definition
+    * @return a uint for the amount escrowed by the contract for the caller, 0 if the slot has not been funded or if the caller is not a recipient in the payment splitting definition
     */
     function getEscrowedValue(uint slotId) public view returns(uint) {
         uint slotIndex = getEscrowSlotIndex(slotId);
@@ -156,8 +163,8 @@ contract EscrowPaymentSplitter is Ownable {
     }
 
     /**
-    * @dev executes the payment splitting definition (i.e. transfers the escrowed amount to the recipients). Can only be called by the address that funded the slot
-    *
+    * @notice executes the payment splitting definition (i.e. credits the escrowed amounts to the recipient's balances)
+    * @dev Can only be called by the address that funded the slot. Deletes the slot if successful.
     * @param slotId ID of the escrow slot
     */
     function settleEscrowSlot(uint slotId) public {
@@ -178,26 +185,48 @@ contract EscrowPaymentSplitter is Ownable {
         emit EscrowSlotSettled(slotId);
     }
 
-    /**
-     * @dev transfer funds held for the caller to its own address
-     */
-    function getReceivedFunds() public {
+    /// @notice transfers all funds held for the caller.  Reverts if the caller has no funds awaiting
+    function withdrawReceivedFunds() public {
         require(recipientFunds[msg.sender] > 0, 'No funds to withdraw');
         IERC20 tokenContract = IERC20(tokenContractAddress);
         bool success = tokenContract.transfer(msg.sender, recipientFunds[msg.sender]);
         if(success){
             recipientFunds[msg.sender] = 0;
+            emit WithdrawalAllowance(msg.sender, 0);
         }
     }
 
-    // *** Internal helper
+    // *** Internal helpers
     /**
-    * @dev internal function to find the index inside the state's dynamic array of an EscrowSlot with given ID. Reverts if escrow slot ID doesn't exist
-    *
+    * @dev internal handler which funds the escrow slot (i.e. transfers the value from the payer address to the contract) and updates escrow slot state
+    * @param slotId ID of the escrow slot
+    * @param payer address of the escrow slot payer/funder
+    */
+    function handleEscrowSlotFunding(uint slotId, address payer) private {
+        uint slotIndex = getEscrowSlotIndex(slotId);                   // reverts if slot doesn't exist
+        require(!escrowSlots[slotIndex].funded, string(abi.encodePacked("Slot with ID ", slotId.toString(), " was already funded")));
+        // compute total slot value from payment splitting definition
+        uint val;
+        for(uint i = 0; i < escrowSlots[slotIndex].paymentSplittingDefinition.recipients.length; i++){
+            val = SafeMath.add(val, escrowSlots[slotIndex].paymentSplittingDefinition.amounts[i]);
+        }
+        // transfer value into tbis contract to escrow it
+        IERC20 tokenContract = IERC20(tokenContractAddress);
+        bool success = tokenContract.transferFrom(payer, address(this), val);     // reverts if value can't be collected
+        // update state if successful
+        if(success){
+            escrowSlots[slotIndex].payer = payer;
+            escrowSlots[slotIndex].funded = true;
+            emit EscrowSlotFunded(slotId);
+        }
+    }
+
+    /**
+    * @dev internal function to find the index inside the state's dynamic array of an escrow slot with a given ID. Reverts if the ID doesn't exist
     * @param slotId ID of the escrow slot
     * @return uint the index of the slot inside the state's escrowSlots dynamic array
     */
-    function getEscrowSlotIndex(uint slotId) internal view returns(uint){
+    function getEscrowSlotIndex(uint slotId) private view returns(uint){
         for(uint i = 0; i < escrowSlots.length; i++){
             if(escrowSlots[i].id == slotId){
                 return i;

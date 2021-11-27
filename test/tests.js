@@ -154,13 +154,13 @@ contract('EscrowPaymentSplitter', accounts => {
                 escrowBalance -= slotAmountTotal;
                 assert.equal(response.logs[0].event, 'WithdrawalAllowance', 'An WithdrawalAllowance event was not emitted');
                 assert.equal(response.logs[0].args.recipient, slotRecipients[0], 'The recipient address doesn\'t match');
-                assert.equal(response.logs[0].args.amount.toNumber(), slotAmountPerRecipient[0], 'The recipient\'s allowance amount doesn\'t match');
+                assert.equal(response.logs[0].args.balance.toNumber(), slotAmountPerRecipient[0], 'The recipient\'s allowance amount doesn\'t match');
                 assert.equal(response.logs[1].event, 'WithdrawalAllowance', 'An WithdrawalAllowance event was not emitted');
                 assert.equal(response.logs[1].args.recipient, slotRecipients[1], 'The recipient address doesn\'t match');
-                assert.equal(response.logs[1].args.amount.toNumber(), slotAmountPerRecipient[1], 'The recipient\'s allowance amount doesn\'t match');
+                assert.equal(response.logs[1].args.balance.toNumber(), slotAmountPerRecipient[1], 'The recipient\'s allowance amount doesn\'t match');
                 assert.equal(response.logs[2].event, 'WithdrawalAllowance', 'An WithdrawalAllowance event was not emitted');
                 assert.equal(response.logs[2].args.recipient, slotRecipients[2], 'The recipient address doesn\'t match');
-                assert.equal(response.logs[2].args.amount.toNumber(), slotAmountPerRecipient[2], 'The recipient\'s allowance amount doesn\'t match');
+                assert.equal(response.logs[2].args.balance.toNumber(), slotAmountPerRecipient[2], 'The recipient\'s allowance amount doesn\'t match');
                 assert.equal(response.logs[3].event, 'EscrowSlotSettled', 'An EscrowSlotSettled event was not emitted');
                 assert.equal(response.logs[3].args.slotId.toNumber(), slotId, 'The escrow slot ID doesn\'t match');
             });
@@ -173,21 +173,39 @@ contract('EscrowPaymentSplitter', accounts => {
             });
         });
     });
-    it('Should transfer the correct amount when getReceivedFunds() is called', () => {
+    it('Should transfer the correct amount when withdrawReceivedFunds() is called and reset the recipientFunds balance to zero', () => {
         return Promise.all([EscrowPaymentSplitter.deployed(), UoA.deployed()]).then(([instance, uoaInstance]) => {
-            return instance.getReceivedFunds({from : addressCheckedAfterSettlement}).then(() => {
+            return instance.withdrawReceivedFunds({from : addressCheckedAfterSettlement}).then(() => {
                 return uoaInstance.balanceOf(addressCheckedAfterSettlement);
             }).then(balance => {
                 assert.equal(balance.toNumber(), amountAfterSettlement, 'UoA contract balance expected after transfer doesn\'t match expected amount');
+                return instance.recipientFunds(addressCheckedAfterSettlement);
+            }).then(balance => {
+                assert.equal(balance.toNumber(), 0, 'Contract\'s recipientFunds balance didn\'t reset after call to withdrawReceivedFunds()');
             });
         });
     });
-    it('Should revert if another address than the consolidation serrvice (contract owner) calls openEscrowSlot()', () => {
+    it('Should revert if Ether is sent to contract', () => {
+        return EscrowPaymentSplitter.deployed().then(instance => {
+            return catchRevert(web3.eth.sendTransaction({from: accounts[1], to: instance.address, value: web3.utils.toWei('1', 'ether')}), 'Contract doesn\'t accept Ether');
+        });
+    });
+    it('Should revert with specific message if it\'s called in a transaction without Ether nor data', () => {
+        return EscrowPaymentSplitter.deployed().then(instance => {
+            return catchRevert(web3.eth.sendTransaction({from: accounts[1], to: instance.address}), 'Erronous call without data nor value, receive() triggered');
+        });
+    });
+    it('Should revert with a specific error message if a transaction ends up calling fallback()', () => {
+        return EscrowPaymentSplitter.deployed().then(instance => {
+            return catchRevert(instance.sendTransaction({from: accounts[1], data: '0xa'}), 'Erronous call, fallback() triggered');
+        });
+    });
+    it('Should revert if another address than the supply consolidation service (contract owner) calls openEscrowSlot()', () => {
         return EscrowPaymentSplitter.deployed().then(instance => {
             return catchRevert(instance.openEscrowSlot(5, {recipients: [accounts[2]], amounts: [slotAmount]}, {from: accounts[1]}), 'Ownable: caller is not the owner');
         });
     });
-    it('Should revert if another address than the consolidation serrvice (contract owner) calls fundEscrowSlotFrom()', () => {
+    it('Should revert if another address than the supply consolidation serrvice (contract owner) calls fundEscrowSlotFrom()', () => {
         return EscrowPaymentSplitter.deployed().then(instance => {
             return catchRevert(instance.fundEscrowSlotFrom(slotId, accounts[1], {from: accounts[1]}), 'Ownable: caller is not the owner');
         });
@@ -211,14 +229,14 @@ contract('EscrowPaymentSplitter', accounts => {
             return catchRevert(instance.settleEscrowSlot(response.logs[0].args.slotId.toNumber()), 'Slot with ID '+response.logs[0].args.slotId.toNumber()+' was not funded and can\'t be settled');
         });
     });
-    it('Should revert if another address than the payer calls settleEscrowSlot()', () => {
+    it('Should revert if another address than the payer/funder calls settleEscrowSlot()', () => {
         return EscrowPaymentSplitter.deployed().then(instance => {
             return catchRevert(instance.settleEscrowSlot(fundedEscrowSlotId, {from: accounts[1]}), 'Slot can only be settled by payer');
         });
     });
-    it('Should revert if an address with a recipientFunds balance of 0 calls getReceivedFunds()', () => {
+    it('Should revert if an address with a recipientFunds balance of 0 calls withdrawReceivedFunds()', () => {
         return EscrowPaymentSplitter.deployed().then(instance => {
-            return catchRevert(instance.getReceivedFunds({from: accounts[0]}), 'No funds to withdraw');
+            return catchRevert(instance.withdrawReceivedFunds({from: accounts[0]}), 'No funds to withdraw');
         });
     });
     it('Should revert if getPaymentSplittingDefinition(), fundEscrowSlot(), fundEscrowSlotFrom(), isEscrowSlotFunded(), getEscrowedValue() or settleEscrowSlot() are called on a slot ID the contract doesn\'t know', () => {
