@@ -1,15 +1,30 @@
 var express = require('express');
+const BlockchainClient = require('../blockchain-client');
 var router = express.Router();
 const {VariableSharepoint} = require('../utilities');
 
 var database = VariableSharepoint.get('database');
 var blockchainClient = VariableSharepoint.get('blockchainClient');
 
+router.get('/chainID', function(req, res, next) {
+    res.send({success: true, chainID: blockchainClient.getChainID()});
+});
+
 router.get('/contractDetails', function(req, res, next) {
     try {
         validateParameterExistence(req.query, ['name']);
         let details = blockchainClient.getContractEssentials(req.query.name);
         res.send(details != null ? {success: true, abi: details.abi, address: details.address} : {success: false, errorMessage: 'contract '+req.query.name+' unknown'});
+    }
+    catch(error){res.send({success: false, errorMessage: error});}
+});
+
+router.get('/addressLabels', function(req, res, next) {
+    try {
+        let labels = database.getSupplierAddressLabels();
+        labels[blockchainClient.getAccount().toLowerCase()] = 'Supply consolidation service';
+        console.log(labels);
+        res.send(labels =! null ? {success: true, labels} : {success: false});
     }
     catch(error){res.send({success: false, errorMessage: error});}
 });
@@ -80,11 +95,21 @@ router.post('/order/confirm', async function(req, res, next) {
     catch(error){res.send({success: false, errorMessage: error});}
 });
 
-router.post('/order/fundNext', async function(req, res, next) {
+router.post('/order/nextFunding', async function(req, res, next) {
     try {
         validateParameterExistence(req.body, ['address', 'orderID']);
         database.isCustomerOrder(req.body.address, req.body.orderID);
-        blockchainClient.setNextOrderToFund(req.body.address, req.body.orderID);
+        database.setNextOrderToFund(req.body.address, req.body.orderID);
+        res.send({success: true});
+    }
+    catch(error){res.send({success: false, errorMessage: error});}
+});
+
+router.post('/order/cancelFunding', async function(req, res, next) {
+    try {
+        validateParameterExistence(req.body, ['address', 'orderID']);
+        database.isCustomerOrder(req.body.address, req.body.orderID);
+        database.resetNextOrderToFund(req.body.address, req.body.orderID);
         res.send({success: true});
     }
     catch(error){res.send({success: false, errorMessage: error});}
@@ -103,16 +128,16 @@ router.post('/mint', async function(req, res, next) {
 router.post('/supplier/register', function(req, res, next) {
     try {
         validateParameterExistence(req.body, ['address', 'supplierID']);
-        updateSupplierAddress(req.body.supplierID, req.body.address)
+        database.updateSupplierAddress(req.body.supplierID, req.body.address.toLowerCase());
         res.send({success: true});
     }
-    catch(error){res.send({success: false, errorMessage: error});}
+    catch(error){res.send({success: false, errorMessage: error}); console.log(error);}
 });
 
 router.get('/supplier', function(req, res, next) {
     try {
         validateParameterExistence(req.query, ['address']);
-        let supplier = database.getSupplierByAddress(req.query.address);
+        let supplier = database.getSupplierByAddress(req.query.address.toLowerCase());
         res.send(supplier != null ? {success: true, supplier} : {success: false, errorMessage: 'Unknown supplier'});
     }
     catch(error){res.send({success: false, errorMessage: error});}

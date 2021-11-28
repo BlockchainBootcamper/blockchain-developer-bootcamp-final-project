@@ -4,14 +4,14 @@ var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 
-// Load non-express elements
+// Load non-Express elements
 const configuration = require('./configuration');
 const InMemoryDatabase = require('./database');
 const BlockchainClient = require('./blockchain-client');
 
 new InMemoryDatabase();
 new BlockchainClient(configuration);  
-// Objects share themselves via VariableSharepoint as 'db' and 'blockchainClient'
+// Objects share themselves via VariableSharepoint as 'database' and 'blockchainClient'
 
 var pagesRouter = require('./routes/pages');
 var apiRouter = require('./routes/api');

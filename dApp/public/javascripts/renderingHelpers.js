@@ -108,3 +108,10 @@ function clearInput(id){
 function getElement(idOrElement){
     return typeof(idOrElement) == 'object' ? idOrElement : document.getElementById(idOrElement);
 }
+
+function addChildren(idOrElement, childStructure){
+    if(!Array.isArray(childStructure)){childStructure = [childStructure];}
+    for(let i = 0; i < childStructure.length; i++){
+        getElement(idOrElement).appendChild(typeof(childStructure[i]) == 'object' ? childStructure[i] : document.createTextNode(childStructure[i]));
+    }
+}

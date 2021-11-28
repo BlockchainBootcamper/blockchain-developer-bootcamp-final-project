@@ -4,7 +4,7 @@ var configuration = {
     networkSpecific: {
         development: {  // f.ex. local Ganache instance - uses unlocked accounts directly from provider, no need to have a key provider() with HDWalletProvider like for public networks (see below)
             websocketProviderURL: 'ws://localhost:8545',
-            contractAddresses: {uoa: '0xf0d98Eef2F8A2F1B912481A94fAFd2FA2D84b7E9', escrowPaymentSplitter: '0xf05c88f49801A4b25994E8f7F1c393A48224Ad59'}
+            contractAddresses: {uoa: '0xb080D33cb3C135D8361d0fC5795bD0d09d2Fa1a8', escrowPaymentSplitter: '0x4531bee0D852CE98ACEC05F0260E065Ebf15268d'}
         },
         ropsten: {
             //HDWalletProvider,

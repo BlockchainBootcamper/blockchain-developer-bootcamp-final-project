@@ -1,7 +1,7 @@
 
 var contracts = {uoa: null, escrowPaymentSplitter: null};
 
-var supplier = {id: null, address: null, name: null, tokenBalance: null};
+var supplier = {id: null, address: null, name: null, tokenBalance: null, withdrawalAllowance: null};
 var parts = {};
 var orders = {};
 var orderEscrowSlotIndex = {};
@@ -14,8 +14,10 @@ window.onload = function(){
     render();
 };
 
-const handleWeb3AccountsEvent = function(accounts){
-    supplier.address = Array.isArray(accounts) && accounts.length ? accounts[0] : null;
+const handleWeb3AccountsChange = function(accounts){
+    let newAddr = Array.isArray(accounts) && accounts.length ? accounts[0] : null;
+    if(newAddr == supplier.address){return;}
+    supplier.address = newAddr;
     if(supplier.address != null){
         setElementText('supplierAddressInRegistration', supplier.address);
         loadSupplierDetails();
@@ -28,6 +30,18 @@ const handleWeb3AccountsEvent = function(accounts){
     }
 };
 
+const handleWeb3NetworkChange = function(networkID){
+    notify('Blockchain: detected network change, new network ID is '+networkID);
+    if(uiState.web3Ok && !chainIDs.ok){
+        notify('Disconnection after network change');
+        render();
+    }
+    if(!uiState.web3Ok && chainIDs.ok){
+        notify('Refreshing UI after change to correct network')
+        render();
+    }
+}
+
 const initializeSmartContract = function(id){
     if(id == 'uoa'){
         contracts[id].methods.decimals().call().then(decimals => {token.decimalsFactor = toBN(10).pow(toBN(decimals));});
@@ -39,10 +53,18 @@ const initializeSmartContract = function(id){
             }
         });
     }
+    if(id == 'escrowPaymentSplitter'){
+        contracts[id].events.WithdrawalAllowance().on('data', event => {
+            if(supplier.address != null && compareAddresses(event.returnValues.recipient, supplier.address)){
+                supplier.withdrawalAllowance = event.returnValues.amount;
+                renderTokenBalances();
+            }
+        });
+    }
 };
 
 const loadSupplierDetails = function(){
-    let msgID = notify('API: loading supplier details for address '+supplier.address+' ...');
+    let msgID = notify('API: loading supplier details for address '+supplier.address+' ... ');
     callAPI('supplier?address='+supplier.address).then(response => {
         if(response.success){
             notify('OK', msgID);
@@ -55,7 +77,7 @@ const loadSupplierDetails = function(){
 
 const registerSupplier = function(){
     let supplierID = document.querySelector('input[name="supplierSelection"]:checked').value;
-    let msgID = notify('API: register address as supplier '+suppliers[supplierID].name+' ...');
+    let msgID = notify('API: register address as supplier '+suppliers[supplierID].name+' ... ');
     callAPI('supplier/register', {method: 'POST', body: {address: supplier.address, supplierID}}).then(response => {
         if(response.success){
             notify('OK', msgID);
@@ -75,6 +97,7 @@ const handleSupplierSetup = function(data){
 
 const loadSupplierData = function(){
     loadBalance();
+    loadWithdrawalAllowance();
     loadParts();
     loadOrders();
 };
@@ -84,8 +107,16 @@ const loadBalance = function(){
     contracts['uoa'].methods.balanceOf(supplier.address).call().then(balance => {
         notify('OK', msgID);
         supplier.tokenBalance = balance != null ? balance : 0;
-        renderTokenBalance();
-    }).catch(error => notify('Failure '+error, msgID, true));
+        renderTokenBalances();
+    }).catch(error => notify('Error: '+error.message, msgID, true));
+};
+
+const loadWithdrawalAllowance = function(){
+    let msgID = notify('Escrow payment splitter contract: updating withdrawal balance ...');
+    contracts['escrowPaymentSplitter'].methods.recipientFunds(supplier.address).call().then(contractBalance => {
+        supplier.withdrawalAllowance = contractBalance;
+        renderTokenBalances();
+    });
 };
 
 const loadParts = function(){
@@ -167,8 +198,10 @@ const renderSupplierDetails = function(){
     setElementText('supplierName', supplier.name);
 };
 
-const renderTokenBalance = function(){
-    setElementText('balance', labelTokenAmount(supplier.tokenBalance / token.decimalsFactor));
+const renderTokenBalances = function(){
+    if(supplier.tokenBalance != null){setElementText('balance', labelTokenAmount(supplier.tokenBalance / token.decimalsFactor));}
+    if(supplier.withdrawalAllowance != null){setElementText('withdrawalAllowance', labelTokenAmount(supplier.withdrawalAllowance / token.decimalsFactor));}
+    setButtonStatus('withdrawalButton', supplier.withdrawalAllowance > 0);
 };
 
 const renderParts = function(){

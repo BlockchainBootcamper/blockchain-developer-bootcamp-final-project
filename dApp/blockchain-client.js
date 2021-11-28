@@ -9,8 +9,8 @@ class BlockchainClient {
     gasEstimationMultiplicationFactor; 
     contracts = {};
     contractABIs = {};
-    account;
-    orderToFundPerCustomer = {};      // maps customer addresses to a order ID
+    account;                    // the account of the service, must be contract owner and have Ether
+    chainID;
 
     constructor(configuration){
         let networkCfg = configuration.networkSpecific[configuration.network];
@@ -19,37 +19,37 @@ class BlockchainClient {
         this.gasEstimationMultiplicationFactor = 1 + configuration.gasMargin;
         VariableSharepoint.share('blockchainClient', this);
 
-        for(let contractID in configuration.contractArtifactFilenames){
-            let contractArtifact = JSON.parse(fs.readFileSync(path.join(__dirname, configuration.contractArtifactsFolderRelativePath, configuration.contractArtifactFilenames[contractID]+'.json')).toString());
-            this.contractABIs[contractID] = contractArtifact.abi;
-            this.contracts[contractID] =  new this.web3.eth.Contract(contractArtifact.abi, networkCfg.contractAddresses[contractID]);
-        }
-        extendTokenContract(this.contracts['uoa'], configuration, this);
-        initializeContractEventListeners(this.contracts['uoa'], this.contracts['escrowPaymentSplitter'])
+        let setupCallbacks = {'uoa': (contract, configuration) => {extendTokenContract(contract, configuration);}};
         this.web3.eth.getAccounts().then(accounts => {
             console.log('Accounts', accounts);
-            this.account = accounts[0]
-            this.contracts['uoa'].serviceAccount = this.account;
-            this.contracts['escrowPaymentSplitter'].serviceAccount = this.account;
+            this.account = accounts[0];
+
+            // load contracts
+            for(let contractID in configuration.contractArtifactFilenames){
+                let contractArtifact = JSON.parse(fs.readFileSync(path.join(__dirname, configuration.contractArtifactsFolderRelativePath, configuration.contractArtifactFilenames[contractID]+'.json')).toString());
+                this.contractABIs[contractID] = contractArtifact.abi;
+                this.contracts[contractID] =  new this.web3.eth.Contract(contractArtifact.abi, networkCfg.contractAddresses[contractID], {from: this.account});
+                if(typeof(setupCallbacks[contractID]) != 'undefined'){setupCallbacks[contractID](this.contracts[contractID], configuration);}
+            }
+            initializeContractEventListeners(this);
         });
+        this.web3.eth.getChainId().then(chainID => this.chainID = chainID);
     }
 
-    getContractEssentials(contractID){
-        return typeof(this.contractABIs[contractID]) != 'undefined' ? {abi: this.contractABIs[contractID], address: this.contracts[contractID]._address} : null;
-    }
+    getChainID(){return this.chainID;}
+    getAccount(){return this.account;}
+    getContract(contractID){return typeof(this.contracts[contractID]) == 'object' ? this.contracts[contractID] : null;}
+    getContractAddress(contractID){return typeof(this.contracts[contractID]) == 'object' ? this.contracts[contractID]._address : null;}
+    getContractEssentials(contractID){return typeof(this.contractABIs[contractID]) != 'undefined' ? {abi: this.contractABIs[contractID], address: this.contracts[contractID]._address} : null;}
 
-    getContract(contractID){
-        return typeof(this.contracts[contractID]) == 'object' ? this.contracts[contractID] : null;
-    }
-
-    estimateGasAndSend(contractID, methodName, parameterArray, options){
+    estimateGasAndSend(contractID, methodName, parameterArray, options = {}){
         let contract = this.contracts[contractID];
         let gasEstimationMultiplicationFactor = this.gasEstimationMultiplicationFactor;
         return new Promise((resolve, reject) => {
             contract.methods[methodName](...parameterArray).estimateGas(options, function(error, gasEstimation){
                 if(error != null){reject(error);}
                 options.gasLimit = parseInt(gasEstimation * gasEstimationMultiplicationFactor);
-                console.log('Preparing smart-contract transaction calling '+methodName+' with a gasLimit of '+options.gasLimit+' (estimation: '+gasEstimation+')');
+                console.log('Preparing smart-contract transaction calling method '+methodName+' on contract '+contractID+' with a gasLimit of '+options.gasLimit+' (estimation: '+gasEstimation+')');
                 contract.methods[methodName](...parameterArray).send(options).then(response => resolve(response)).catch(error => reject(error));
             });
         });
@@ -59,13 +59,8 @@ class BlockchainClient {
         this.contracts[contractID].events[eventName]().on("connected", function(subscriptionId){
             console.log(contractID+' event "'+eventName+'" listener has ID '+subscriptionId);
         })
-        .on('data', function(event){
-            console.log(event); // same results as the optional callback above
-            eventCallback(event);
-        })
-        .on('changed', function(event){
-            console.log('Event changed', event);
-        })
+        .on('data', function(event){eventCallback(event);})
+        .on('changed', function(event){console.log('Event changed', event);})
         .on('error', function(error, receipt) { // If the transaction was rejected by the network with a receipt, the second parameter will be the receipt.
             console.log(contractID+' event "'+eventName+'" listener triggered an error', error, receipt);
         });
@@ -83,36 +78,31 @@ class BlockchainClient {
         }
         paymentSplittingDefinition.recipients.push(this.account);
         paymentSplittingDefinition.amounts.push(this.contracts['uoa'].rebaseToTokenDecimals(order.fees).toString());
-        this.estimateGasAndSend('escrowPaymentSplitter', 'openEscrowSlot', [orderID, paymentSplittingDefinition], {from: this.account}).then(response => {
+        this.estimateGasAndSend('escrowPaymentSplitter', 'openEscrowSlot', [orderID, paymentSplittingDefinition]).then(response => {
             database.setOrderEscrowSlotID(orderID, response.events.EscrowSlotOpened.returnValues.slotId);
             database.updateOrderState(orderID, 'awaiting funding allowance');
-        }).catch(error => console.error(error));
-    }
-
-    setNextOrderToFund(customerAddress, orderID){
-        let database = VariableSharepoint.get('database');
-        if(!database.isValidOrderID(orderID)){throw new Error('Setting next order to fund to an unknown order ID');}
-        let addr = customerAddress.toLowerCase();
-        if(typeof(this.orderToFundPerCustomer[addr]) != 'undefined'){
-            database.updateOrderState(this.orderToFundPerCustomer[addr], 'awaiting funding allowance');    
-        }
-        database.updateOrderState(orderID, 'awaiting funding');
-        this.orderToFundPerCustomer[addr] = orderID;
+        }).catch(error => {
+            database.updateOrderState(order.id, 'unconfirmed');         // TODO: normally we would need a way to inform frontend that an error occured - here we just revert the state
+            console.error('Error in openEscrowSlot call for order '+orderID+':', error)
+        });
     }
 
     handleOrderFunding(customerAddress){
         let database = VariableSharepoint.get('database');
         let addr = customerAddress.toLowerCase();
-        if(typeof(this.orderToFundPerCustomer[addr]) == 'undefined'){return;}
+        let order = database.getNextOrderToFund(addr);
+        console.log('order to fund', order);
+        if(order == null){return;}
         Promise.all([this.contracts['uoa'].methods.allowance(addr, this.contracts['escrowPaymentSplitter']._address).call(), this.contracts['uoa'].methods.balanceOf(addr).call()]).then(([allowance, balance]) => {
-            let order = database.getOrder(this.orderToFundPerCustomer[addr]);
             let escrowAmount = this.contracts['uoa'].rebaseToTokenDecimals(order.partsTotalPrice + order.fees);
+            database.updateOrderState(order.id, 'escrowing funds');
             if(BlockchainClient.toBN(allowance).gte(escrowAmount) && BlockchainClient.toBN(balance).gte(escrowAmount)){
-                // TODO estimateGas
-                //this.contracts['escrowPaymentSplitter'].methods.fundEscrowSlotFrom(order.escrowSlotId, addr).send({from: this.account, gasLimit: 300000}).then(() => {
-                this.estimateGasAndSend('escrowPaymentSplitter', 'fundEscrowSlotFrom', [order.escrowSlotId, addr], {from: this.account}).then(() => {
-                    delete(this.orderToFundPerCustomer[customerAddress]);
+                this.estimateGasAndSend('escrowPaymentSplitter', 'fundEscrowSlotFrom', [order.escrowSlotId, addr]).then(() => {
+                    database.resetNextOrderToFund(addr);
                     database.updateOrderState(order.id, 'awaiting goods');
+                }).catch(error => {
+                    database.updateOrderState(order.id, 'awaiting funding allowance');      // TODO: normally we would need a way to inform frontend that an error occured - here we just revert just the state
+                    console.error('Error in fundEscrowSlot call for order '+order.id+':', error)
                 });
             }
         });
@@ -141,17 +131,15 @@ function extendTokenContract(contract, configuration){
     contract.mint = function(address, amount){
         if(!contract.ready){throw Error('mint() called but contract is not ready');}
         let blockchainClient = VariableSharepoint.get('blockchainClient');
-        //return contract.methods.mint(address, this.rebaseToTokenDecimals(amount)).send({from: contract.serviceAccount});    // TODO default account
-        return blockchainClient.estimateGasAndSend('uoa', 'mint', [address, this.rebaseToTokenDecimals(amount)], {from: contract.serviceAccount})
+        blockchainClient.estimateGasAndSend('uoa', 'mint', [address, this.rebaseToTokenDecimals(amount)]).catch(error => {console.log('Error in mint process for address', address, ', amount', amount, ': ', error);});
     }
 }
 
-function initializeContractEventListeners(tokenContract, escrowContract){
+function initializeContractEventListeners(blockchainClient){
     let database = VariableSharepoint.get('database');
-    let blockchainClient = VariableSharepoint.get('blockchainClient');
-
+    
     blockchainClient.eventHandling('uoa', 'Approval', (event) => {
-        if(database.isCustomerAddress(event.returnValues.owner) && BlockchainClient.compareAddresses(event.returnValues.spender, escrowContract._address)){
+        if(database.isCustomerAddress(event.returnValues.owner) && BlockchainClient.compareAddresses(event.returnValues.spender, blockchainClient.getContractAddress('escrowPaymentSplitter')) && event.returnValues.value > 0){
             blockchainClient.handleOrderFunding(event.returnValues.owner);
         }
     });

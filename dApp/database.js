@@ -8,11 +8,12 @@ class InMemoryDatabase {
 
     // *** Database emulation artifacts
     nextOrderId = 1;
-    customerOrderIndex = {};            // Maps address to array of order IDs
-    orderEscrowSlotIndex = {};
-    supplierAddressIndex = {};          // Maps address to supplier ID
-    supplierOrderIndex = {};            // Maps supplier ID to array of order IDs
-    supplierPartIndex = {};             // Maps supplier ID to array of parts
+    customerOrderIndex = {};            // maps address to array of order IDs
+    orderEscrowSlotIndex = {};          // maps escrow ID to order ID
+    orderToFundPerCustomer = {};        // maps customer addresses to a order ID
+    supplierAddressIndex = {};          // maps address to supplier ID
+    supplierOrderIndex = {};            // maps supplier ID to array of order IDs
+    supplierPartIndex = {};             // maps supplier ID to array of parts
 
     constructor(){
         // Add supplier names to items
@@ -25,6 +26,7 @@ class InMemoryDatabase {
         for(let supplierID in suppliers){
             this.supplierOrderIndex[supplierID] = [];
             this.supplierPartIndex[supplierID] = [];
+            suppliers[supplierID].address = suppliers[supplierID].address.toLowerCase();
         }
         
         for(let partID in parts){
@@ -94,7 +96,6 @@ class InMemoryDatabase {
 
     isValidOrderID(id){return typeof(this.orders[id]) == 'object';}
     getOrder(id){return typeof(this.orders[id]) == 'object' ? this.orders[id] : null;}
-    
 
     setOrderEscrowSlotID(orderID, slotID){
         if(typeof(this.orders[orderID]) == 'undefined'){throw new Error('Attempt to set escrow slot ID on unkown order')}
@@ -103,6 +104,26 @@ class InMemoryDatabase {
     }
 
     getOrderByEscrowSlotId(slotId){return (typeof(this.orderEscrowSlotIndex[slotId]) != 'undefined' && typeof(this.orders[this.orderEscrowSlotIndex[slotId]]) == 'object') ? this.orders[this.orderEscrowSlotIndex[slotId]] : null;}
+
+    getNextOrderToFund(customerAddress){return typeof(this.orderToFundPerCustomer[customerAddress.toLowerCase()]) != 'undefined' ? this.orders[this.orderToFundPerCustomer[customerAddress.toLowerCase()]] : null;}
+
+    setNextOrderToFund(customerAddress, orderID){
+        //let database = VariableSharepoint.get('database');
+        if(!this.isValidOrderID(orderID)){throw new Error('Setting next order to fund to an unknown order ID');}
+        let addr = customerAddress.toLowerCase();
+        /*if(typeof(this.orderToFundPerCustomer[addr]) != 'undefined'){
+            this.updateOrderState(this.orderToFundPerCustomer[addr], 'awaiting funding allowance');
+        }
+        this.updateOrderState(orderID, 'awaiting funding');*/
+        this.orderToFundPerCustomer[addr] = orderID;
+
+    }
+
+    resetNextOrderToFund(customerAddress){
+        let addr = customerAddress.toLowerCase();
+        //this.updateOrderState(this.orderToFundPerCustomer[addr], 'awaiting funding allowance');
+        delete this.orderToFundPerCustomer[addr];
+    }
 
     updateOrderState(orderID, newState){
         if(typeof(this.orders[orderID]) == 'undefined'){throw new Error('Attempt to set update state on unkown order')}
@@ -127,6 +148,14 @@ class InMemoryDatabase {
             supplierOrders.push(order);
         }
         return supplierOrders;
+    }
+
+    getSupplierAddressLabels(){
+        let labels = {};
+        for(let supplierID in suppliers){
+            labels[suppliers[supplierID].address] = suppliers[supplierID].name;
+        }
+        return labels;
     }
 }
 

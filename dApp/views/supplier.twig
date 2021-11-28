@@ -13,9 +13,12 @@
   <div id="accountDetails" style="display: none"><b>Account</b>: <span id="supplierName"><i>No account</i></span> (address: <span id="supplierAddress"></span>)</div>
   
   <div id="page" style="display: none">
-    <h2>Token</h2>
-    <div style="display: inline-block; height: 100%; text-align: center;">
-      Current balance: <span id="balance">?</span>
+    <h2>Token balances</h2>
+    <div>
+      <ul>
+        <li>In own wallet: <span id="balance">?</span></li>
+        <li>In escrow contract: <span id="withdrawalAllowance">?</span> <button id="withdrawalButton" style="margin-left: 10px" disabled>Withdraw</button></li>
+      </ul>
     </div>
 
     <h2>Parts</h2>
