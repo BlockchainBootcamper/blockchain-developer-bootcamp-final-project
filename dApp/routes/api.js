@@ -1,5 +1,5 @@
 var express = require('express');
-const BlockchainClient = require('../blockchain-client');
+const configuration = require('../configuration');
 var router = express.Router();
 const {VariableSharepoint} = require('../utilities');
 
@@ -75,7 +75,7 @@ router.post('/order', function(req, res, next) {
     try {
         validateParameterExistence(req.body, ['address', 'itemID', 'amount']);
         if(!database.isCustomerAddress(req.body.address)){throw new Error('Customer unknown');}
-        let fees = Math.random() * 10;
+        let fees = Number((Math.random() * 10).toFixed(configuration.currencyDecimals));
         let item = database.getItem(req.body.itemID);
         if(item == null){throw new Error('Attempt to order unknown item');}
         let partsTotalPrice = item.computeOrderPrice(Number(req.body.amount));
