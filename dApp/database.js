@@ -1,3 +1,4 @@
+const configuration = require('./configuration');
 const {suppliers, parts, items} = require('./data');
 const {VariableSharepoint} = require('./utilities');
 
@@ -77,7 +78,8 @@ class InMemoryDatabase {
 
     getSupplierByAddress(address){
         let addr = address.toLowerCase();
-        return (typeof(this.supplierAddressIndex[addr]) == 'object' && typeof(suppliers[this.supplierAddressIndex[addr]]) == 'object') ? suppliers[this.supplierAddressIndex[addr]] : null;
+        //console.log(this.supplierAddressIndex[addr], this.supplierAddressIndex, );
+        return (typeof(this.supplierAddressIndex[addr]) != 'undefined' && typeof(suppliers[this.supplierAddressIndex[addr]]) == 'object') ? suppliers[this.supplierAddressIndex[addr]] : null;
     }
 
     getSupplierParts(supplierID){return typeof(suppliers[supplierID]) == 'object' ? this.supplierPartIndex[supplierID] : null;}
@@ -108,20 +110,14 @@ class InMemoryDatabase {
     getNextOrderToFund(customerAddress){return typeof(this.orderToFundPerCustomer[customerAddress.toLowerCase()]) != 'undefined' ? this.orders[this.orderToFundPerCustomer[customerAddress.toLowerCase()]] : null;}
 
     setNextOrderToFund(customerAddress, orderID){
-        //let database = VariableSharepoint.get('database');
         if(!this.isValidOrderID(orderID)){throw new Error('Setting next order to fund to an unknown order ID');}
         let addr = customerAddress.toLowerCase();
-        /*if(typeof(this.orderToFundPerCustomer[addr]) != 'undefined'){
-            this.updateOrderState(this.orderToFundPerCustomer[addr], 'awaiting funding allowance');
-        }
-        this.updateOrderState(orderID, 'awaiting funding');*/
         this.orderToFundPerCustomer[addr] = orderID;
 
     }
 
     resetNextOrderToFund(customerAddress){
         let addr = customerAddress.toLowerCase();
-        //this.updateOrderState(this.orderToFundPerCustomer[addr], 'awaiting funding allowance');
         delete this.orderToFundPerCustomer[addr];
     }
 
@@ -143,8 +139,14 @@ class InMemoryDatabase {
         if(typeof(this.supplierOrderIndex[supplierID]) == 'undefined'){return null;}
         let supplierOrders = [];
         for(let orderID of this.supplierOrderIndex[supplierID]){
-            let order = orders[orderID];
+            let order = this.orders[orderID];
             order.customerName = this.customers[order.customerAddress].name;
+            let item = this.getItem(order.itemID);
+            order.suppliedComponents = [];
+            for(let partIdx in item.composition){
+                if(item.composition[partIdx].part.supplierID != supplierID){continue;}
+                order.suppliedComponents.push({partID: item.composition[partIdx].part.id, amount: item.composition[partIdx].amount, price: (order.amount * item.composition[partIdx].amount * item.composition[partIdx].part.price).toFixed(configuration.currencyDecimals)});
+            }
             supplierOrders.push(order);
         }
         return supplierOrders;
