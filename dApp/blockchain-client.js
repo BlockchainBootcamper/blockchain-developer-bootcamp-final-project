@@ -92,7 +92,7 @@ class BlockchainClient {
         let addr = customerAddress.toLowerCase();
         let order = database.getNextOrderToFund(addr);
         console.log('order to fund', order);
-        if(order == null){return;}
+        if(order == null || order.state == 'escrowing funds'){return;}
         Promise.all([this.contracts['uoa'].methods.allowance(addr, this.contracts['escrowPaymentSplitter']._address).call(), this.contracts['uoa'].methods.balanceOf(addr).call()]).then(([allowance, balance]) => {
             let escrowAmount = this.contracts['uoa'].rebaseToTokenDecimals(order.partsTotalPrice + order.fees);
             database.updateOrderState(order.id, 'escrowing funds');
@@ -125,7 +125,7 @@ function extendTokenContract(contract, configuration){
     contract.rebaseToTokenDecimals = function(amount){
         if(!contract.ready){throw Error('rebaseToTokenDecimals() called but contract is not ready');}
         // The split is necessary because BN.js doesn't support beeing created from numbers with decimals => first use currencyDecimalsFactor to bring the number to an integer + coinDecimalsAdjustedFactor to convert to the coinbase
-        return BlockchainClient.toBN(parseInt(amount.toFixed(configuration.currencyDecimals) * this.currencyDecimalsFactor)).mul(this.coinDecimalsAdjustedFactor);
+        return BlockchainClient.toBN(Math.round(amount.toFixed(configuration.currencyDecimals) * this.currencyDecimalsFactor)).mul(this.coinDecimalsAdjustedFactor);
     }
 
     contract.mint = function(address, amount){
