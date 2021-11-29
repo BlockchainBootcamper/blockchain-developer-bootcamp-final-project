@@ -15,7 +15,7 @@ class BlockchainClient {
     constructor(configuration){
         let networkCfg = configuration.networkSpecific[configuration.network];
         if(typeof(networkCfg.loadRequirements) == 'function'){networkCfg.loadRequirements();}
-        this.web3 = new Web3(typeof(networkCfg.provider) == 'function' ? configuration.provider(new Web3.providers.WebsocketProvider(networkCfg.websocketProviderURL())) : networkCfg.websocketProviderURL);
+        this.web3 = new Web3(typeof(networkCfg.provider) == 'function' ? networkCfg.provider(new Web3.providers.WebsocketProvider(networkCfg.websocketProviderURL())) : networkCfg.websocketProviderURL);
         this.gasEstimationMultiplicationFactor = 1 + configuration.gasMargin;
         VariableSharepoint.share('blockchainClient', this);
 

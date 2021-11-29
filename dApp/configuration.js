@@ -1,15 +1,11 @@
-
 var configuration = {
-    network: 'development',     // which of the networkSpecific configuration below is loaded
-    networkSpecific: {
-        development: {  // f.ex. local Ganache instance - uses unlocked accounts directly from provider, no need to have a key provider() with HDWalletProvider like for public networks (see below)
+    network: 'ropsten',     // which of the networkSpecific sections below is loaded
+    networkSpecific: {      // truffle inspired
+        development: {      // f.ex. local Ganache instance - uses unlocked accounts directly from provider, no need to have a key provider() with HDWalletProvider like for public networks (see below)
             websocketProviderURL: 'ws://localhost:8545',
             contractAddresses: {uoa: '0xb080D33cb3C135D8361d0fC5795bD0d09d2Fa1a8', escrowPaymentSplitter: '0x4531bee0D852CE98ACEC05F0260E065Ebf15268d'}
         },
         ropsten: {
-            //HDWalletProvider,
-            //env,
-
             loadRequirements: function(){
                 this.HDWalletProvider = require('@truffle/hdwallet-provider');
                 this.env = require('dotenv').config().parsed;
@@ -24,17 +20,13 @@ var configuration = {
                     addressIndex: 0
                 });
             },
-            contractAddresses: {uoa: '', escrowPaymentSplitter: ''}
+            contractAddresses: {uoa: '0xcaF4cf3BC2970563c157d369F70b42b7a6d3d00A', escrowPaymentSplitter: '0xba8865E97A0F2228B84c8a657E96868B8045C9F1'}
         }
     },
-    /*contracts: {
-        uoa: {artifactFilename: 'UoA', address: '0x3f0a150C7D0Dd41b56960196F145903954CE77BF'},
-        escrowPaymentSplitter: {artifactFilename: 'EscrowPaymentSplitter', address: '0xe2359A44Be1108A3F2AA1b2781b5838a069fa5a3'}
-    },*/
     contractArtifactsFolderRelativePath: '../build/contracts',
     contractArtifactFilenames: {uoa: 'UoA', escrowPaymentSplitter: 'EscrowPaymentSplitter'},
-    currencyDecimals: 2,                 // Note: not the token decimals, see rebaseToTokenDecimals()
-    gasMargin: 0.2                       // 20% above estimation
+    currencyDecimals: 2,                 // Note: decimals in the UI, not the token contract
+    gasMargin: 0.2                       // percent indication between 0 and 1 for the gasLimit margin - 0.2 means it uses a limit 20% above estimation
 }
 
 module.exports = configuration;
