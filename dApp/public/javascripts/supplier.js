@@ -1,11 +1,7 @@
-
-var contracts = {uoa: null, escrowPaymentSplitter: null};
-
 var supplier = {id: null, address: null, name: null, tokenBalance: null, withdrawalAllowance: null};
 var parts = {};
 var orders = {};
-var orderEscrowSlotIndex = {};
-var token = {decimalsFactor: null, isMinting: false, symbol: null};
+var token = {decimalsFactor: null, symbol: null};
 
 window.onload = function(){
     onLoadHandler(initializeSmartContract);
@@ -56,7 +52,8 @@ const initializeSmartContract = function(id){
     if(id == 'escrowPaymentSplitter'){
         contracts[id].events.WithdrawalAllowance().on('data', event => {
             if(supplier.address != null && compareAddresses(event.returnValues.recipient, supplier.address)){
-                supplier.withdrawalAllowance = event.returnValues.amount;
+                notify('Escrow payment splitter contract: withdrawal allowance event - '+labelTokenAmount(event.returnValues.balance / token.decimalsFactor));
+                supplier.withdrawalAllowance = event.returnValues.balance;
                 renderTokenBalances();
             }
         });
@@ -100,6 +97,7 @@ const loadSupplierData = function(){
     loadWithdrawalAllowance();
     loadParts();
     loadOrders();
+    setInterval(function(){loadOrders();}, 30000);
 };
 
 const loadBalance = function(){
@@ -116,7 +114,7 @@ const loadWithdrawalAllowance = function(){
     contracts['escrowPaymentSplitter'].methods.recipientFunds(supplier.address).call().then(contractBalance => {
         supplier.withdrawalAllowance = contractBalance;
         renderTokenBalances();
-    });
+    }).catch(error => notify('Error: '+error.message, msgID, true));
 };
 
 const loadParts = function(){
@@ -141,32 +139,30 @@ const loadOrders = function(){
             for(let order of response.orders){
                 order.amountEscrowed = null;
                 order.suppliedValue = 0;
-                order.suppliedParts = [];
-                for(let partIdx in order.positions){
-                    if(order.positions[partIdx].supplierID == supplier.id){
-                        order.suppliedParts.push(order.positions[partIdx]);
-                        order.suppliedValue += order.positions[partIdx].price;
-                    }
-                }
+                for(let component of order.suppliedComponents){order.suppliedValue += Number(component.price);}
                 orders[order.id] = order;
-                loadEscrowedAmount(order.id);
+                if(order.state == 'awaiting funding allowance' || order.state == 'awaiting goods'){loadEscrowedAmount(order.id);}
             }
             renderOrders();
         }
         else notify('Backend failure', msgID, true);
-    }).catch(error => notify('Failure '+error, msgID, true));
+    }).catch(error => {notify('Failure '+error, msgID, true); console.log(error);});
 };
 
 const loadEscrowedAmount = function(orderID){
-    console.log(orders);
-    let msgID = notify('Escrow payment splitter contract: reading escrowed value for order ID '+orderID+' ...');
-    contracts['escrowPaymentSplitter'].methods.getEscrowedValue(orders[orderID].escrowSlotId).call().then(value => {
+    let msgID = notify('Escrow payment splitter contract: reading escrowed value for order ID '+orderID+' ... ');
+    contracts['escrowPaymentSplitter'].methods.getEscrowedValue(orders[orderID].escrowSlotId).call({from: supplier.address}).then(value => {
         notify('OK', msgID);
         orders[orderID].amountEscrowed = value / token.decimalsFactor;
         try{setElementText('amountEscrowed'+orderID, renderEscrowState(orderID));}
         catch(error){};
     }).catch(error => notify('Failure '+error, msgID, true));
 };
+
+const withdrawReceivedFunds = function(){
+    let msgID = notify('Blockchain: withdrawing received funds from escrow payment splitter contract ... ');
+    contracts['escrowPaymentSplitter'].methods.withdrawReceivedFunds().send({from: supplier.address}).then(() => notify('OK', msgID)).catch(error => notify(error.message, msgID, true));
+}
 
 const render = function(part = null){
     if(typeof(web3) == 'object'){
@@ -230,14 +226,14 @@ const renderOrders = function(){
         table.appendChild(new TableRow(true).addCells(['ID', 'Name', 'ID', 'Name', 'Unit price', 'Amount in item / order', 'Position value']).element);
         for(let orderID in orders){
             let order = orders[orderID];
-            let row = new TableRow().addRowspanCells([orderID, order.customerName, order.itemID, parts[order.suppliedParts[0].partID].items[order.itemID].name, order.amount], order.suppliedParts.length);
+            let row = new TableRow().addRowspanCells([orderID, order.customerName, order.itemID, parts[order.suppliedComponents[0].partID].items[order.itemID].name, order.amount], order.suppliedComponents.length);
             let i = 0; 
-            for(let suppliedPart of order.suppliedParts){
+            for(let suppliedPart of order.suppliedComponents){
                 if(i > 0){row = new TableRow();}
-                row.addCells([suppliedPart.partID, parts[suppliedPart.partID].name, labelTokenAmount(parts[suppliedPart.partID].price), parts[suppliedPart.partID].items[order.itemID].amount+' / '+suppliedPart.amount, labelTokenAmount(suppliedPart.price)]);
+                row.addCells([suppliedPart.partID, parts[suppliedPart.partID].name, labelTokenAmount(parts[suppliedPart.partID].price), suppliedPart.amount+' / '+(suppliedPart.amount * order.amount), suppliedPart.price]);
                 if(i == 0){
-                    row.addRowspanCells([labelTokenAmount(order.suppliedValue), order.state], order.suppliedParts.length);
-                    row.addCell(renderEscrowState(orderID), cell => applyMultipleAttributes(cell, {id: 'amountEscrowed'+orderID, rowspan: order.suppliedParts.length}));
+                    row.addRowspanCells([labelTokenAmount(order.suppliedValue), order.state], order.suppliedComponents.length);
+                    row.addCell(renderEscrowState(orderID), cell => applyMultipleAttributes(cell, {id: 'amountEscrowed'+orderID, rowspan: order.suppliedComponents.length}));
                 }
                 table.appendChild(row.element);
                 i++;
@@ -249,5 +245,6 @@ const renderOrders = function(){
 }
 
 const renderEscrowState = function(orderID){
+    if(orders[orderID].state == 'concluded'){return '-';}
     return orders[orderID].amountEscrowed != null ? (orders[orderID].amountEscrowed >= orders[orderID].suppliedValue ? 'Yes' : 'No')+' ('+orders[orderID].amountEscrowed+')' : '?';
 }
