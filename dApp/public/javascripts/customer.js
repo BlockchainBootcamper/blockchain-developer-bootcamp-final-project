@@ -285,7 +285,6 @@ const render = function(part = null){
     if(part == null){
         uiState.web3Ok = chainIDs.ok && customer.address != null;
         if(uiState.web3Ok){
-            
             customer.name != null ? setElementsVisibility(['page', 'accountDetails'], ['walletInitialization', 'registration']) : setElementsVisibility('registration', ['page', 'accountDetails', 'walletInitialization']);
         }
         else {

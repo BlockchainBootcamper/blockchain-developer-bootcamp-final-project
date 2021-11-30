@@ -2,6 +2,8 @@ var supplier = {id: null, address: null, name: null, tokenBalance: null, withdra
 var parts = {};
 var orders = {};
 var token = {decimalsFactor: null, symbol: null};
+var uiState = {web3Ok: false};
+var withdrawing = false;
 
 window.onload = function(){
     onLoadHandler(initializeSmartContract);
@@ -160,20 +162,27 @@ const loadEscrowedAmount = function(orderID){
 };
 
 const withdrawReceivedFunds = function(){
+    withdrawing = true;
+    renderTokenBalances();
     let msgID = notify('Blockchain: withdrawing received funds from escrow payment splitter contract ... ');
-    contracts['escrowPaymentSplitter'].methods.withdrawReceivedFunds().send({from: supplier.address}).then(() => notify('OK', msgID)).catch(error => notify(error.message, msgID, true));
+    contracts['escrowPaymentSplitter'].methods.withdrawReceivedFunds().send({from: supplier.address}).then(() => {
+        notify('OK', msgID);
+        withdrawing = false;
+        renderTokenBalances();
+    }).catch(error => {
+        notify(error.message, msgID, true);
+        withdrawing = false;
+        renderTokenBalances();
+    });
 }
 
-const render = function(part = null){
-    if(typeof(web3) == 'object'){
-        enableButton('walletConnectionButton');
-        if(supplier.address != null){
-            supplier.name != null ? setElementsVisibility(['page', 'accountDetails'], ['walletInitialization', 'registration']) : setElementsVisibility('registration', ['page', 'accountDetails', 'walletInitialization']);
-        }
-        else setElementsVisibility('walletInitialization', ['page', 'accountDetails', 'registration']);
+const render = function(){
+    uiState.web3Ok = chainIDs.ok && supplier.address != null;
+    if(uiState.web3Ok){
+        supplier.name != null ? setElementsVisibility(['page', 'accountDetails'], ['walletInitialization', 'registration']) : setElementsVisibility('registration', ['page', 'accountDetails', 'walletInitialization']);
     }
     else {
-        disableButton('walletConnectionButton');
+        setButtonStatus('walletConnectionButton', typeof(web3) == 'object');
         setElementsVisibility('walletInitialization', ['page', 'accountDetails', 'registration']);
     }
 };
@@ -197,7 +206,8 @@ const renderSupplierDetails = function(){
 const renderTokenBalances = function(){
     if(supplier.tokenBalance != null){setElementText('balance', labelTokenAmount(supplier.tokenBalance / token.decimalsFactor));}
     if(supplier.withdrawalAllowance != null){setElementText('withdrawalAllowance', labelTokenAmount(supplier.withdrawalAllowance / token.decimalsFactor));}
-    setButtonStatus('withdrawalButton', supplier.withdrawalAllowance > 0);
+    setButtonStatus('withdrawalButton', supplier.withdrawalAllowance > 0 && !withdrawing);
+    setElementVisibility('withdrawalNotification', withdrawing);
 };
 
 const renderParts = function(){

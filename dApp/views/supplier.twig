@@ -17,7 +17,9 @@
     <div>
       <ul>
         <li>In own wallet: <span id="balance">?</span></li>
-        <li>In escrow contract: <span id="withdrawalAllowance">?</span> <button id="withdrawalButton" style="margin-left: 10px" disabled onclick="withdrawReceivedFunds();">Withdraw</button></li>
+        <li>In escrow contract: <span id="withdrawalAllowance">?</span> <button id="withdrawalButton" style="margin-left: 10px" disabled onclick="withdrawReceivedFunds();">Withdraw</button>
+          <span id="withdrawalNotification" style="display: none; margin-left: 30px;"><img src="images/loading.gif" width="20" class="spinner" />Withdrawal ongoing</span>
+        </li>
       </ul>
     </div>
 
