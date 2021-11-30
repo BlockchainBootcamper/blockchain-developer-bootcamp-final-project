@@ -84,7 +84,7 @@ Please check out the corresponding documentation in the [dApp](./dApp) folder fo
 
 ## Bootcamp specifics
 ### Screencast
-Recorded, upload pending. URL coming soon.
+[Youtube](https://youtu.be/wXHmFjKZ0jM)
 
 ### Certification Ethereum address
 0xAC3190D65B000adD5d19eDD3571166C507eB676d
