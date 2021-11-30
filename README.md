@@ -76,13 +76,15 @@ Please follow the instructions for the smart-contract compilation first.
     - create a copy of `.env.example` and call it `.env`, put the mnemonic and the API key in the corresponding entries
     - if you selected another network than Ropsten: adapt the `truffle-config.js` by replacing the `ropsten` key by the name of the selected network and adapt the service provider URL as well
     - if you use another service than Infura: adapt the `truffle-config.js` by setting the correct URL for your provider
-    - if you wish to use another address than the first one your wallet provides, adapt the `truffle-config.js` by setting the correct address index (0-based counter).
+    - if you wish to use another address than the first one your wallet provides, adapt the `truffle-config.js` by setting the correct address index (0-based counter)
+    - run `truffle migrate --network <name of network>`
 
 ### Use the command-line client or front-end
-Please check out the corresponding documentation in [dApp](./dApp) for the frontend and [cli_client](./cli_client) for the command-line client.
+Please check out the corresponding documentation in the [dApp](./dApp) folder for the frontends and the [cli_client](./cli_client) directory for the command-line client. The dApp is hosted on [165.22.23.35:3008](http://165.22.23.35:3008), the cli client was used in the early times, but it's not up-to-date with the latest versions of the smart-contracts. 
 
 ## Bootcamp specifics
 ### Screencast
-TODO
-### Mainnet Ethereum address
-TODO
+Recorded, upload pending. URL coming soon.
+
+### Certification Ethereum address
+0xAC3190D65B000adD5d19eDD3571166C507eB676d
